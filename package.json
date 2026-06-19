@@ -1,0 +1,16 @@
+{
+  "name": "report-generator-web",
+  "version": "1.0.0",
+  "description": "Termux-native Student Report Card Generator and WhatsApp Sender",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pdf-lib": "^1.17.1",
+    "pino": "^9.2.0",
+    "qrcode": "^1.5.3",
+    "@whiskeysockets/baileys": "^6.7.8"
+  }
+}

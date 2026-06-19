@@ -1,0 +1,322 @@
+:root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --accent-blue: #3b82f6;
+    --accent-success: #10b981;
+    --accent-danger: #ef4444;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border-color: #334155;
+    --font-stack: 'Outfit', sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-stack);
+    min-height: 100vh;
+}
+
+.app-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar Navigation */
+.sidebar {
+    background-color: var(--bg-secondary);
+    width: 250px;
+    padding: 2rem 1.5rem;
+    border-right: 1px solid var(--border-color);
+}
+
+.logo {
+    margin-bottom: 3rem;
+}
+
+.logo h2 {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.logo span {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.nav-links {
+    list-style: none;
+}
+
+.nav-links li {
+    padding: 1rem;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    margin-bottom: 0.5rem;
+}
+
+.nav-links li:hover, .nav-links li.active {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+/* Main Content Area */
+.main-content {
+    flex: 1;
+    padding: 2.5rem;
+    overflow-y: auto;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2.5rem;
+}
+
+.panel-header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+/* Inputs & Form Cards */
+.search-bar input {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    width: 300px;
+    outline: none;
+    transition: border 0.3s;
+}
+
+.search-bar input:focus {
+    border-color: var(--accent-blue);
+}
+
+.two-column-layout {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 2rem;
+}
+
+.card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.card h3 {
+    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.input-group {
+    margin-bottom: 1.2rem;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.input-group input {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.8rem;
+    border-radius: 6px;
+    width: 100%;
+    outline: none;
+}
+
+.input-group input:focus {
+    border-color: var(--accent-blue);
+}
+
+/* Tables */
+.table-container {
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+th, td {
+    padding: 1rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th {
+    background-color: #0f172a;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* Inputs in tables */
+td input[type="number"] {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem;
+    border-radius: 4px;
+    width: 60px;
+    text-align: center;
+    outline: none;
+}
+
+td input[type="number"]:disabled {
+    background-color: #0f172a;
+    opacity: 0.5;
+    border-color: transparent;
+}
+
+/* Buttons */
+.btn {
+    padding: 0.8rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background 0.3s;
+}
+
+.primary-btn {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+.primary-btn:hover {
+    background-color: #2563eb;
+}
+
+.success-btn {
+    background-color: var(--accent-success);
+    color: white;
+}
+
+.success-btn:hover {
+    background-color: #059669;
+}
+
+.danger-btn {
+    background-color: var(--accent-danger);
+    color: white;
+}
+
+.danger-btn:hover {
+    background-color: #dc2626;
+}
+
+.float-right {
+    float: right;
+}
+
+/* WhatsApp QR Panel */
+.qr-container {
+    background-color: #0f172a;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+#qr-placeholder {
+    color: var(--text-secondary);
+}
+
+#qr-image {
+    max-height: 230px;
+}
+
+.status-indicator {
+    font-weight: 600;
+}
+
+.statusDisconnected { color: var(--accent-danger); }
+.statusConnected { color: var(--accent-success); }
+.statusPending { color: #f59e0b; }
+
+.progress-bar {
+    background-color: #0f172a;
+    border-radius: 8px;
+    height: 12px;
+    overflow: hidden;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    background-color: var(--accent-success);
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+/* Responsive (Mobile/Tablet Navigation) */
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding: 1rem;
+    }
+    .logo {
+        margin-bottom: 1rem;
+    }
+    .nav-links {
+        display: flex;
+        overflow-x: auto;
+        gap: 0.5rem;
+    }
+    .nav-links li {
+        margin-bottom: 0;
+        white-space: nowrap;
+    }
+    .two-column-layout {
+        grid-template-columns: 1fr;
+    }
+    .main-content {
+        padding: 1.5rem;
+    }
+}
