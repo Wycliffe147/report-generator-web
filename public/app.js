@@ -540,9 +540,14 @@ async function loadSettings() {
     if (document.getElementById('headteacher-remarks-pass')) {
         document.getElementById('headteacher-remarks-pass').value = settings.headteacherRemarksPass || '';
         document.getElementById('headteacher-remarks-fail').value = settings.headteacherRemarksFail || '';
-        document.getElementById('bursary-name').value = settings.bursaryName || '';
         document.getElementById('next-term-fees').value = settings.nextTermFees || '';
         document.getElementById('next-term-date').value = settings.nextTermDate || '';
+        
+        if (document.getElementById('current-term')) {
+            document.getElementById('current-term').value = settings.currentTerm || 'Term One';
+            document.getElementById('header-contact-label').value = settings.headerContactLabel || 'School Phone';
+            document.getElementById('header-contact-number').value = settings.headerContactNumber || '';
+        }
     }
     
     document.getElementById('grading-tbody').innerHTML = '';

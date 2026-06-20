@@ -79,6 +79,9 @@ function readDb() {
     if (db.settings.headteacherRemarksFail === undefined) db.settings.headteacherRemarksFail = "Failed. Work harder next term.";
     if (db.settings.nextTermFees === undefined) db.settings.nextTermFees = "MK 50,000";
     if (db.settings.nextTermDate === undefined) db.settings.nextTermDate = "10 September 2026";
+    if (db.settings.currentTerm === undefined) db.settings.currentTerm = "Term One";
+    if (db.settings.headerContactLabel === undefined) db.settings.headerContactLabel = "School Phone";
+    if (db.settings.headerContactNumber === undefined) db.settings.headerContactNumber = "0999000000";
     
     writeDb(db);
     return db;
@@ -202,6 +205,9 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     if (req.body.headteacherRemarksFail !== undefined) db.settings.headteacherRemarksFail = req.body.headteacherRemarksFail;
     if (req.body.nextTermFees !== undefined) db.settings.nextTermFees = req.body.nextTermFees;
     if (req.body.nextTermDate !== undefined) db.settings.nextTermDate = req.body.nextTermDate;
+    if (req.body.currentTerm !== undefined) db.settings.currentTerm = req.body.currentTerm;
+    if (req.body.headerContactLabel !== undefined) db.settings.headerContactLabel = req.body.headerContactLabel;
+    if (req.body.headerContactNumber !== undefined) db.settings.headerContactNumber = req.body.headerContactNumber;
     
     if (req.body.gradingSystem) {
         try {
@@ -417,7 +423,9 @@ async function generatePDF(student, db) {
 
     // Student Info Block
     page.drawText(`Student Name: ${student.name}`, { x: 40, y: height - 140, size: 12, font: fontBold });
-    page.drawText(`Phone / Guardian Contact: ${student.phone || 'N/A'}`, { x: 40, y: height - 160, size: 10, font: fontRegular });
+    page.drawText(`Term: ${db.settings.currentTerm}`, { x: 40, y: height - 160, size: 10, font: fontBold });
+    
+    page.drawText(`${db.settings.headerContactLabel}: ${db.settings.headerContactNumber}`, { x: 380, y: height - 120, size: 10, font: fontRegular });
     page.drawText(`Position: ${student.rank} of ${db.students.length}`, { x: 380, y: height - 140, size: 12, font: fontBold });
     page.drawText(`Total Points: ${student.mscePoints} (Best 6 Subjects)`, { x: 380, y: height - 160, size: 10, font: fontRegular });
 
