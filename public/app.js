@@ -286,28 +286,48 @@ document.getElementById('cancel-staff-btn').addEventListener('click', () => {
 // 2. Marks Grid Tab
 async function renderMarksTab() {
     await fetchStudents();
+    
+    const allowedSubjects = currentUser.role === 'teacher' ? currentUser.subjects : subjectsList;
+    
+    // Generate Headers
+    const theadTr = document.getElementById('marks-table-header');
+    theadTr.innerHTML = '<th>Student Name</th>';
+    allowedSubjects.forEach(sub => {
+        theadTr.innerHTML += `<th>${sub}</th>`;
+    });
+    theadTr.innerHTML += `<th>Actions</th>`;
+
     const tbody = document.querySelector('#marks-entry-table tbody');
     tbody.innerHTML = '';
-
+    
     students.forEach(student => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td><strong>${student.name}</strong></td>` +
-            subjectsList.map(sub => {
-                const isTaking = student.subjects[sub];
-                const mark = isTaking && student.marks[sub] !== undefined && student.marks[sub] !== null ? student.marks[sub] : '';
-                return `
-                    <td>
-                        <input type="number" min="0" max="100" 
-                               data-student-id="${student.id}" 
-                               data-subject="${sub}" 
-                               value="${mark}" 
-                               ${isTaking ? '' : 'disabled'}>
-                    </td>
-                `;
-            }).join('') +
-            `<td>
+        tr.setAttribute('data-id', student.id);
+        
+        let cols = `<td><strong>${student.name}</strong></td>`;
+        
+        allowedSubjects.forEach(sub => {
+            const isTaking = student.subjects[sub];
+            const mark = isTaking && student.marks[sub] !== undefined && student.marks[sub] !== null ? student.marks[sub] : '';
+            cols += `
+                <td>
+                    <input type="number" min="0" max="100" 
+                           data-student-id="${student.id}" 
+                           data-subject="${sub}" 
+                           value="${mark}" 
+                           ${isTaking ? '' : 'disabled'}
+                           style="width: 60px;">
+                </td>
+            `;
+        });
+        
+        cols += `
+            <td>
                 <button class="btn success-btn save-marks-row-btn" data-student-id="${student.id}">Save</button>
-             </td>`;
+            </td>
+        `;
+        
+        tr.innerHTML = cols;
         tbody.appendChild(tr);
     });
 
@@ -324,14 +344,21 @@ async function renderMarksTab() {
                 }
             });
 
-            const res = await apiFetch('/api/marks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: studentId, marks })
-            });
+            try {
+                const res = await apiFetch('/api/marks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: studentId, marks })
+                });
 
-            if (res.ok) {
-                alert('Marks saved for this row!');
+                if (res.ok) {
+                    alert('Marks saved for this row!');
+                } else {
+                    const errorData = await res.json();
+                    alert("Error: " + (errorData.error || "Failed to save marks."));
+                }
+            } catch(e) {
+                alert("Error saving marks.");
             }
         });
     });
