@@ -169,7 +169,6 @@ async function renderRankingsTab() {
             <td><strong>${student.rank}</strong></td>
             <td>${student.name}</td>
             <td>${student.subjectsCount} Subjects</td>
-            <td>${student.totalMarks}</td>
             <td>${student.mscePoints}</td>
             <td>
                 <button class="btn primary-btn download-pdf-btn" data-student-id="${student.id}">Save PDF</button>

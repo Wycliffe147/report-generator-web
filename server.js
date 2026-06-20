@@ -279,7 +279,7 @@ async function generatePDF(student, db) {
     // Student Info Block
     page.drawText(`Student Name: ${student.name}`, { x: 40, y: height - 140, size: 12, font: fontBold });
     page.drawText(`Phone / Guardian Contact: ${student.phone || 'N/A'}`, { x: 40, y: height - 160, size: 10, font: fontRegular });
-    page.drawText(`Class Rank: ${student.rank} of ${db.students.length}`, { x: 380, y: height - 140, size: 12, font: fontBold });
+    page.drawText(`Position: ${student.rank} of ${db.students.length}`, { x: 380, y: height - 140, size: 12, font: fontBold });
     page.drawText(`MSCE Aggregate Points: ${student.mscePoints} (Best 6 Subjects)`, { x: 380, y: height - 160, size: 10, font: fontRegular });
 
     // Table Header
@@ -314,7 +314,6 @@ async function generatePDF(student, db) {
 
     // Summary Details at Bottom
     currentY -= 20;
-    page.drawText(`Total Marks Scored: ${student.totalMarks} Points`, { x: 40, y: currentY, size: 11, font: fontBold });
     page.drawText(`Generated on: ${new Date().toLocaleDateString()}`, { x: 380, y: currentY, size: 9, font: fontRegular });
 
     const pdfBytes = await pdfDoc.save();
