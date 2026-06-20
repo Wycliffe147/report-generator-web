@@ -3,6 +3,15 @@ let masterSubjects = [];
 let subjectsList = [];
 let subjectsMap = {};
 
+window.hasUnsavedChanges = false;
+
+window.addEventListener('beforeunload', (e) => {
+    if (window.hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
 async function loadGlobals() {
     try {
         const res = await apiFetch('/api/settings');
@@ -117,6 +126,13 @@ document.getElementById('logout-btn').addEventListener('click', handleLogout);
 // Handle Tabs Routing
 document.querySelectorAll('.nav-links li').forEach(item => {
     item.addEventListener('click', () => {
+        if (window.hasUnsavedChanges) {
+            if (!confirm("You have unsaved changes. Are you sure you want to leave without saving?")) {
+                return;
+            }
+            window.hasUnsavedChanges = false;
+        }
+
         document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
         document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
         
@@ -478,6 +494,13 @@ async function renderMarksTab() {
         tbody.appendChild(tr);
     });
 
+    // Track unsaved changes on marks input
+    tbody.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', () => {
+            window.hasUnsavedChanges = true;
+        });
+    });
+
     // Add listeners to Save buttons
     tbody.querySelectorAll('.save-marks-row-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -499,6 +522,7 @@ async function renderMarksTab() {
                 });
 
                 if (res.ok) {
+                    window.hasUnsavedChanges = false;
                     alert('Marks saved for this row!');
                 } else {
                     const errorData = await res.json();
