@@ -73,6 +73,13 @@ function readDb() {
             subjects: []
         }];
     }
+    
+    // Default new fields if missing
+    if (db.settings.headteacherRemarks === undefined) db.settings.headteacherRemarks = "Promoted to next class. Work harder next term.";
+    if (db.settings.bursaryName === undefined) db.settings.bursaryName = "Mr. Administrator";
+    if (db.settings.nextTermFees === undefined) db.settings.nextTermFees = "MK 50,000";
+    if (db.settings.nextTermDate === undefined) db.settings.nextTermDate = "10 September 2026";
+    
     writeDb(db);
     return db;
 }
@@ -191,6 +198,10 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     if (req.body.schoolName) db.settings.schoolName = req.body.schoolName;
     if (req.body.subtitle) db.settings.subtitle = req.body.subtitle;
     if (req.body.themeColor) db.settings.themeColor = req.body.themeColor;
+    if (req.body.headteacherRemarks !== undefined) db.settings.headteacherRemarks = req.body.headteacherRemarks;
+    if (req.body.bursaryName !== undefined) db.settings.bursaryName = req.body.bursaryName;
+    if (req.body.nextTermFees !== undefined) db.settings.nextTermFees = req.body.nextTermFees;
+    if (req.body.nextTermDate !== undefined) db.settings.nextTermDate = req.body.nextTermDate;
     
     if (req.body.gradingSystem) {
         try {
@@ -447,6 +458,16 @@ async function generatePDF(student, db) {
     });
 
     // Summary Details at Bottom
+    currentY -= 20;
+    
+    page.drawText(`Headteacher's Remarks: ${db.settings.headteacherRemarks}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+    currentY -= 15;
+    page.drawText(`Bursar Name: ${db.settings.bursaryName}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+    currentY -= 15;
+    page.drawText(`Next Term Fees: ${db.settings.nextTermFees}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+    currentY -= 15;
+    page.drawText(`Next Term Opens On: ${db.settings.nextTermDate}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+
     currentY -= 20;
     page.drawText(`Generated on: ${new Date().toLocaleDateString()}`, { x: 380, y: currentY, size: 9, font: fontRegular });
 
