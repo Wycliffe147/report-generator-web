@@ -83,14 +83,22 @@ async function checkLogin() {
             document.querySelector('[data-tab="rankings-tab"]').style.display = 'none';
             document.querySelector('[data-tab="whatsapp-tab"]').style.display = 'none';
             document.querySelector('[data-tab="settings-tab"]').style.display = 'none';
-            
+            document.querySelector('[data-tab="superadmin-tab"]').style.display = 'none';
+
             document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
             document.querySelector('[data-tab="marks-tab"]').classList.add('active');
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
             document.getElementById('marks-tab').classList.add('active');
             renderMarksTab();
-        } else {
+        } else if (currentUser.role === 'superadmin') {
+            // Show all tabs including Super Admin
             document.querySelectorAll('.nav-links li').forEach(li => li.style.display = 'block');
+            document.getElementById('nav-superadmin').style.display = 'block';
+            renderStudentsTab();
+        } else {
+            // admin: show all except superadmin tab
+            document.querySelectorAll('.nav-links li').forEach(li => li.style.display = 'block');
+            document.getElementById('nav-superadmin').style.display = 'none';
             renderStudentsTab();
         }
     } else {
@@ -295,9 +303,9 @@ if (btnSendSelected) {
 async function loadSuperAdmin() {
     try {
         const res = await apiFetch('/api/saas/schools');
-        if (!res.ok) return; // Not a superadmin
+        if (!res.ok) return;
         const schools = await res.json();
-        
+
         const tbody = document.querySelector('#saas-schools-table tbody');
         tbody.innerHTML = '';
         schools.forEach(s => {
@@ -307,7 +315,26 @@ async function loadSuperAdmin() {
                 <td><strong>${s.schoolName}</strong></td>
                 <td>${s.studentCount}</td>
                 <td>${s.adminUsers.join(', ')}</td>
+                <td>
+                    <button class="btn danger-btn delete-school-btn" data-id="${s.schoolId}" style="padding: 5px 10px; font-size: 0.8rem;">Delete</button>
+                </td>
             `;
+            tr.querySelector('.delete-school-btn').addEventListener('click', async () => {
+                const confirmed = confirm(`⚠️ DELETE "${s.schoolName}"?\n\nThis will permanently delete ALL students, teachers, and data for this school. This cannot be undone.`);
+                if (!confirmed) return;
+                try {
+                    const delRes = await apiFetch(`/api/saas/schools/${s.schoolId}`, { method: 'DELETE' });
+                    if (delRes.ok) {
+                        alert(`School "${s.schoolName}" has been deleted.`);
+                        loadSuperAdmin();
+                    } else {
+                        const err = await delRes.json();
+                        alert('Error: ' + err.error);
+                    }
+                } catch (e) {
+                    alert('Failed to delete school.');
+                }
+            });
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -339,19 +366,8 @@ document.getElementById('new-school-form')?.addEventListener('submit', async (e)
     }
 });
 
-// Hook into header to show Super Admin tab if applicable
-const oldRenderHeader = renderHeader;
-renderHeader = function() {
-    oldRenderHeader();
-    if (currentUser && currentUser.role === 'superadmin') {
-        const navSuper = document.getElementById('nav-superadmin');
-        if (navSuper) navSuper.style.display = 'block';
-    }
-};
-
-
 document.addEventListener("DOMContentLoaded", () => {
-    renderHeader();
+    checkLogin();
 });
 
 async function fetchStudents() {

@@ -327,17 +327,19 @@ function requireSuperAdmin(req, res, next) {
 app.get('/api/saas/schools', authenticateToken, requireSuperAdmin, (req, res) => {
     // Ensure schools structure is initialized
     readDb('default');
-    // Return all schools and their stats
-    const stats = Object.keys(dbCache.schools).map(schoolId => {
-        const s = dbCache.schools[schoolId];
-        const admins = dbCache.users.filter(u => u.schoolId === schoolId && (u.role === 'admin' || u.role === 'superadmin'));
-        return {
-            schoolId,
-            schoolName: s.settings.schoolName || "Unnamed School",
-            studentCount: s.students.length,
-            adminUsers: admins.map(a => a.username)
-        };
-    });
+    // Return all schools (excluding internal 'default') and their stats
+    const stats = Object.keys(dbCache.schools)
+        .filter(schoolId => schoolId !== 'default')
+        .map(schoolId => {
+            const s = dbCache.schools[schoolId];
+            const admins = dbCache.users.filter(u => u.schoolId === schoolId && (u.role === 'admin' || u.role === 'superadmin'));
+            return {
+                schoolId,
+                schoolName: s.settings.schoolName || "Unnamed School",
+                studentCount: s.students.length,
+                adminUsers: admins.map(a => a.username)
+            };
+        });
     res.json(stats);
 });
 
@@ -376,6 +378,19 @@ app.post('/api/saas/schools', authenticateToken, requireSuperAdmin, (req, res) =
         console.error('Error creating school:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+app.delete('/api/saas/schools/:schoolId', authenticateToken, requireSuperAdmin, (req, res) => {
+    readDb('default');
+    const { schoolId } = req.params;
+    if (schoolId === 'default') return res.status(400).json({ error: "Cannot delete the default school" });
+    if (!dbCache.schools[schoolId]) return res.status(404).json({ error: "School not found" });
+    // Remove the school data
+    delete dbCache.schools[schoolId];
+    // Remove all users belonging to this school
+    dbCache.users = dbCache.users.filter(u => u.schoolId !== schoolId);
+    writeDb();
+    res.json({ success: true });
 });
 
 app.use('/api', authenticateToken);
