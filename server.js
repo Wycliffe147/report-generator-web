@@ -45,8 +45,21 @@ function readDb() {
             themeColor: "#142e5c",
             logoPath: null
         };
-        writeDb(db);
     }
+    if (!db.settings.gradingSystem) {
+        db.settings.gradingSystem = [
+            { min: 80, grade: "D1", points: 1, remark: "Distinction" },
+            { min: 75, grade: "D2", points: 2, remark: "Distinction" },
+            { min: 70, grade: "C3", points: 3, remark: "Credit" },
+            { min: 65, grade: "C4", points: 4, remark: "Credit" },
+            { min: 60, grade: "C5", points: 5, remark: "Credit" },
+            { min: 50, grade: "C6", points: 6, remark: "Credit" },
+            { min: 45, grade: "P7", points: 7, remark: "Pass" },
+            { min: 40, grade: "P8", points: 8, remark: "Pass" },
+            { min: 0, grade: "F9", points: 9, remark: "Fail" }
+        ];
+    }
+    writeDb(db);
     return db;
 }
 
@@ -54,18 +67,14 @@ function writeDb(data) {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
-// Calculate MANEB Grades
-function getGrade(score) {
+// Calculate Grades
+function getGrade(score, db) {
     if (score === null || score === undefined || score === '') return { grade: '-', points: 9, remark: 'No Grade' };
     const num = Number(score);
-    if (num >= 80) return { grade: "D1", points: 1, remark: "Distinction" };
-    if (num >= 75) return { grade: "D2", points: 2, remark: "Distinction" };
-    if (num >= 70) return { grade: "C3", points: 3, remark: "Credit" };
-    if (num >= 65) return { grade: "C4", points: 4, remark: "Credit" };
-    if (num >= 60) return { grade: "C5", points: 5, remark: "Credit" };
-    if (num >= 50) return { grade: "C6", points: 6, remark: "Credit" };
-    if (num >= 45) return { grade: "P7", points: 7, remark: "Pass" };
-    if (num >= 40) return { grade: "P8", points: 8, remark: "Pass" };
+    const rules = [...db.settings.gradingSystem].sort((a, b) => b.min - a.min);
+    for (const rule of rules) {
+        if (num >= rule.min) return { grade: rule.grade, points: rule.points, remark: rule.remark };
+    }
     return { grade: "F9", points: 9, remark: "Fail" };
 }
 
@@ -82,7 +91,7 @@ function calculateRankings(db) {
                 if (score !== null && score !== undefined && score !== '') {
                     total += Number(score);
                     subjectsCount++;
-                    pointsArray.push(getGrade(score).points);
+                    pointsArray.push(getGrade(score, db).points);
                 } else {
                     pointsArray.push(9); // Unentered marks count as F9 (9 pts)
                 }
@@ -133,6 +142,14 @@ app.post('/api/settings', upload.single('logo'), (req, res) => {
     if (req.body.schoolName) db.settings.schoolName = req.body.schoolName;
     if (req.body.subtitle) db.settings.subtitle = req.body.subtitle;
     if (req.body.themeColor) db.settings.themeColor = req.body.themeColor;
+    
+    if (req.body.gradingSystem) {
+        try {
+            db.settings.gradingSystem = JSON.parse(req.body.gradingSystem);
+        } catch (e) {
+            console.error("Failed to parse grading system", e);
+        }
+    }
     
     if (req.file) {
         db.settings.logoPath = req.file.path;
@@ -299,7 +316,7 @@ async function generatePDF(student, db) {
         if (student.subjects[sub]) {
             const score = student.marks[sub];
             const hasScore = score !== null && score !== undefined && score !== '';
-            const gradeInfo = hasScore ? getGrade(score) : { grade: '-', points: '-', remark: 'Absent/No Score' };
+            const gradeInfo = hasScore ? getGrade(score, db) : { grade: '-', points: '-', remark: 'Absent/No Score' };
 
             page.drawText(sub, { x: 50, y: currentY, size: 10, font: fontRegular });
             page.drawText(hasScore ? `${score}%` : '-', { x: 200, y: currentY, size: 10, font: fontRegular });

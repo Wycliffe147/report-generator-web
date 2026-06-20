@@ -309,11 +309,44 @@ async function loadSettings() {
     document.getElementById('school-name').value = settings.schoolName || '';
     document.getElementById('school-subtitle').value = settings.subtitle || '';
     document.getElementById('theme-color').value = settings.themeColor || '#142e5c';
+    
+    document.getElementById('grading-tbody').innerHTML = '';
+    if (settings.gradingSystem) {
+        settings.gradingSystem.sort((a,b) => b.min - a.min).forEach(rule => addGradingRow(rule));
+    }
 }
+
+function addGradingRow(rule = {min: 0, grade: '', points: 0, remark: ''}) {
+    const tbody = document.getElementById('grading-tbody');
+    const tr = document.createElement('tr');
+    tr.className = 'grading-row';
+    tr.innerHTML = `
+        <td><input type="number" class="g-min" value="${rule.min}" required style="width: 60px; padding: 5px;"></td>
+        <td><input type="text" class="g-grade" value="${rule.grade}" required style="width: 60px; padding: 5px;"></td>
+        <td><input type="number" class="g-points" value="${rule.points}" required style="width: 60px; padding: 5px;"></td>
+        <td><input type="text" class="g-remark" value="${rule.remark}" required style="width: 100px; padding: 5px;"></td>
+        <td><button type="button" class="btn danger-btn remove-rule-btn" style="padding: 5px 10px;">X</button></td>
+    `;
+    tr.querySelector('.remove-rule-btn').addEventListener('click', () => tr.remove());
+    tbody.appendChild(tr);
+}
+
+document.getElementById('add-grade-rule-btn').addEventListener('click', () => addGradingRow());
 
 document.getElementById('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
+    
+    const rules = [];
+    document.querySelectorAll('.grading-row').forEach(row => {
+        rules.push({
+            min: Number(row.querySelector('.g-min').value),
+            grade: row.querySelector('.g-grade').value,
+            points: Number(row.querySelector('.g-points').value),
+            remark: row.querySelector('.g-remark').value
+        });
+    });
+    formData.append('gradingSystem', JSON.stringify(rules));
     
     const res = await fetch('/api/settings', {
         method: 'POST',
