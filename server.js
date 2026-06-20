@@ -894,7 +894,7 @@ async function connectToWhatsApp() {
         printQRInTerminal: false,
         syncFullHistory: false,
         markOnlineOnConnect: false,
-        logger: pino({ level: 'info' })
+        logger: pino({ level: 'silent' })
     });
     
     sock.ev.on('connection.update', async (update) => {
