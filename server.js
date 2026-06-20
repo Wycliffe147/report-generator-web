@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const multer = require('multer');
@@ -783,8 +783,75 @@ let sock = null;
 let qrCodeImage = null;
 let wsConnectionStatus = "Disconnected";
 
+async function useMongoDBAuthState(collection) {
+    const writeData = async (data, id) => {
+        await collection.replaceOne(
+            { _id: id },
+            { _id: id, data: JSON.parse(JSON.stringify(data, BufferJSON.replacer)) },
+            { upsert: true }
+        );
+    };
+
+    const readData = async (id) => {
+        try {
+            const doc = await collection.findOne({ _id: id });
+            if (doc && doc.data) {
+                return JSON.parse(JSON.stringify(doc.data), BufferJSON.reviver);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+        return null;
+    };
+
+    const removeData = async (id) => {
+        await collection.deleteOne({ _id: id });
+    };
+
+    const creds = await readData('creds') || initAuthCreds();
+
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    await Promise.all(ids.map(async id => {
+                        let value = await readData(`${type}-${id}`);
+                        if (type === 'app-state-sync-key' && value) {
+                            value = proto.Message.AppStateSyncKeyData.fromObject(value);
+                        }
+                        data[id] = value;
+                    }));
+                    return data;
+                },
+                set: async (data) => {
+                    const tasks = [];
+                    for (const category in data) {
+                        for (const id in data[category]) {
+                            const value = data[category][id];
+                            const key = `${category}-${id}`;
+                            tasks.push(value ? writeData(value, key) : removeData(key));
+                        }
+                    }
+                    await Promise.all(tasks);
+                }
+            }
+        },
+        saveCreds: () => {
+            return writeData(creds, 'creds');
+        }
+    };
+}
+
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    let state, saveCreds;
+    if (mongoDb) {
+        const collection = mongoDb.collection('whatsapp_auth');
+        ({ state, saveCreds } = await useMongoDBAuthState(collection));
+    } else {
+        ({ state, saveCreds } = await useMultiFileAuthState('auth_info_baileys'));
+    }
     const { version, isLatest } = await fetchLatestBaileysVersion();
     
     sock = makeWASocket({
@@ -827,8 +894,7 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Start WhatsApp service in background
-connectToWhatsApp();
+// WhatsApp service is started after initDB inside app.listen block
 
 app.get('/api/whatsapp/status', (req, res) => {
     res.json({ status: wsConnectionStatus, qr: qrCodeImage });
@@ -882,6 +948,7 @@ app.post('/api/whatsapp/send', async (req, res) => {
 });
 
 initDB().then(() => {
+    connectToWhatsApp();
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
     });
