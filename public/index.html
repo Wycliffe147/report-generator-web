@@ -66,7 +66,15 @@
                                 <label for="student-phone">WhatsApp Number (with country code)</label>
                                 <input type="text" id="student-phone" required placeholder="e.g. 265999123456">
                             </div>
-                            <button type="submit" class="btn primary-btn">Register Student</button>
+                            <div class="input-group" style="align-items: center; flex-direction: row; gap: 10px; margin-top: 15px;">
+                                <input type="checkbox" id="student-on-bursary" style="width: auto; cursor:pointer;">
+                                <label for="student-on-bursary" style="margin-bottom: 0; cursor:pointer;">On Bursary?</label>
+                            </div>
+                            <div class="input-group" id="student-bursary-group" style="display: none; margin-top: 10px;">
+                                <label for="student-bursary-name">Bursary Name</label>
+                                <input type="text" id="student-bursary-name" placeholder="e.g. Save the Children">
+                            </div>
+                            <button type="submit" class="btn primary-btn" style="margin-top: 15px;">Register Student</button>
                         </form>
                     </div>
 
@@ -79,6 +87,8 @@
                                 <thead>
                                     <tr>
                                         <th>Student</th>
+                                        <th>Phone</th>
+                                        <th>Bursary</th>
                                         <th>AGR</th>
                                         <th>BK</th>
                                         <th>BIO</th>
@@ -285,10 +295,6 @@
                             <input type="text" id="headteacher-remarks-fail" name="headteacherRemarksFail" required placeholder="Failed. Work harder next term.">
                         </div>
                         <div class="input-group" style="margin-top: 10px;">
-                            <label for="bursary-name">Bursar Name</label>
-                            <input type="text" id="bursary-name" name="bursaryName" required placeholder="Mr. Smith">
-                        </div>
-                        <div class="input-group">
                             <label for="next-term-fees">Next Term Fees</label>
                             <input type="text" id="next-term-fees" name="nextTermFees" required placeholder="MK 50,000">
                         </div>

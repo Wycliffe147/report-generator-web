@@ -109,7 +109,11 @@ async function renderStudentsTab() {
     
     students.forEach(student => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td><strong>${student.name}</strong><br><small>${student.phone}</small></td>` + 
+        tr.innerHTML = `
+            <td><input type="text" data-student-id="${student.id}" data-field="name" value="${student.name}" style="width: 120px;"></td>
+            <td><input type="text" data-student-id="${student.id}" data-field="phone" value="${student.phone || ''}" style="width: 100px;"></td>
+            <td><input type="text" data-student-id="${student.id}" data-field="bursaryName" value="${student.bursaryName || ''}" placeholder="None" style="width: 100px;"></td>
+        ` + 
             subjectsList.map(sub => `
                 <td>
                     <input type="checkbox" data-student-id="${student.id}" data-subject="${sub}" ${student.subjects[sub] ? 'checked' : ''}>
@@ -122,6 +126,7 @@ async function renderStudentsTab() {
 // Save Subject Config Checkboxes
 document.getElementById('save-subjects-btn').addEventListener('click', async () => {
     const updates = {};
+    
     document.querySelectorAll('#subjects-table input[type="checkbox"]').forEach(box => {
         const studentId = box.getAttribute('data-student-id');
         const subject = box.getAttribute('data-subject');
@@ -130,21 +135,30 @@ document.getElementById('save-subjects-btn').addEventListener('click', async () 
         updates[studentId].subjects[subject] = box.checked;
     });
 
-    for (const studentId of Object.keys(updates)) {
-        const student = students.find(s => s.id === studentId);
-        await apiFetch('/api/students', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: studentId,
-                name: student.name,
-                phone: student.phone,
-                subjects: updates[studentId].subjects
-            })
-        });
+    document.querySelectorAll('#subjects-table input[type="text"]').forEach(input => {
+        const studentId = input.getAttribute('data-student-id');
+        const field = input.getAttribute('data-field');
+        if (!updates[studentId]) updates[studentId] = { subjects: {} };
+        updates[studentId][field] = input.value;
+    });
+
+    const res = await apiFetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+    });
+
+    if (res.ok) {
+        alert('Student data and subjects saved!');
+        renderStudentsTab();
+    } else {
+        alert('Error saving data.');
     }
-    alert('Subject selections saved successfully!');
-    renderStudentsTab();
+});
+
+// Toggle bursary input
+document.getElementById('student-on-bursary').addEventListener('change', (e) => {
+    document.getElementById('student-bursary-group').style.display = e.target.checked ? 'block' : 'none';
 });
 
 // Add New Student Form
@@ -152,16 +166,21 @@ document.getElementById('add-student-form').addEventListener('submit', async (e)
     e.preventDefault();
     const name = document.getElementById('student-name').value;
     const phone = document.getElementById('student-phone').value;
+    const onBursary = document.getElementById('student-on-bursary').checked;
+    const bursaryName = onBursary ? document.getElementById('student-bursary-name').value : '';
     
     const res = await apiFetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, subjects: {} })
+        body: JSON.stringify({ name, phone, bursaryName, subjects: {} })
     });
     
     if (res.ok) {
         document.getElementById('student-name').value = '';
         document.getElementById('student-phone').value = '';
+        document.getElementById('student-bursary-name').value = '';
+        document.getElementById('student-on-bursary').checked = false;
+        document.getElementById('student-bursary-group').style.display = 'none';
         alert('Student registered!');
         renderStudentsTab();
     }
@@ -171,8 +190,8 @@ document.getElementById('add-student-form').addEventListener('submit', async (e)
 document.getElementById('student-search').addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase();
     document.querySelectorAll('#subjects-table tbody tr').forEach(tr => {
-        const name = tr.querySelector('td').innerText.toLowerCase();
-        if (name.includes(term)) {
+        const nameInput = tr.querySelector('input[data-field="name"]');
+        if (nameInput && nameInput.value.toLowerCase().includes(term)) {
             tr.style.display = '';
         } else {
             tr.style.display = 'none';

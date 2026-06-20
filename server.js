@@ -77,7 +77,6 @@ function readDb() {
     // Default new fields if missing
     if (db.settings.headteacherRemarksPass === undefined) db.settings.headteacherRemarksPass = "Promoted to next class. Well done!";
     if (db.settings.headteacherRemarksFail === undefined) db.settings.headteacherRemarksFail = "Failed. Work harder next term.";
-    if (db.settings.bursaryName === undefined) db.settings.bursaryName = "Mr. Administrator";
     if (db.settings.nextTermFees === undefined) db.settings.nextTermFees = "MK 50,000";
     if (db.settings.nextTermDate === undefined) db.settings.nextTermDate = "10 September 2026";
     
@@ -201,7 +200,6 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     if (req.body.themeColor) db.settings.themeColor = req.body.themeColor;
     if (req.body.headteacherRemarksPass !== undefined) db.settings.headteacherRemarksPass = req.body.headteacherRemarksPass;
     if (req.body.headteacherRemarksFail !== undefined) db.settings.headteacherRemarksFail = req.body.headteacherRemarksFail;
-    if (req.body.bursaryName !== undefined) db.settings.bursaryName = req.body.bursaryName;
     if (req.body.nextTermFees !== undefined) db.settings.nextTermFees = req.body.nextTermFees;
     if (req.body.nextTermDate !== undefined) db.settings.nextTermDate = req.body.nextTermDate;
     
@@ -280,36 +278,37 @@ app.get('/api/students', (req, res) => {
 
 app.post('/api/students', requireAdmin, (req, res) => {
     const db = readDb();
-    const { id, name, phone, subjects } = req.body;
     
-    if (id) {
-        // Update
-        const idx = db.students.findIndex(s => s.id === id);
-        if (idx !== -1) {
-            db.students[idx].name = name;
-            db.students[idx].phone = phone;
-            // Update subjects taking
-            db.subjects.forEach(sub => {
-                db.students[idx].subjects[sub] = !!subjects[sub];
-                if (!subjects[sub]) {
-                    delete db.students[idx].marks[sub]; // remove mark if subject untaken
+    // Bulk update from table
+    if (req.body.updates) {
+        for (const [id, changes] of Object.entries(req.body.updates)) {
+            const student = db.students.find(s => s.id === id);
+            if (student) {
+                if (changes.name !== undefined) student.name = changes.name;
+                if (changes.phone !== undefined) student.phone = changes.phone;
+                if (changes.bursaryName !== undefined) student.bursaryName = changes.bursaryName;
+                if (changes.subjects) {
+                    student.subjects = { ...student.subjects, ...changes.subjects };
                 }
-            });
+            }
         }
-    } else {
-        // Create new
-        const newStudent = {
-            id: 'std_' + Date.now(),
-            name,
-            phone,
-            subjects: {},
-            marks: {}
-        };
-        db.subjects.forEach(sub => {
-            newStudent.subjects[sub] = !!subjects[sub];
-        });
-        db.students.push(newStudent);
+        writeDb(db);
+        return res.json({ success: true });
     }
+    
+    // Create new student
+    const newStudent = {
+        id: 'std_' + Date.now(),
+        name: req.body.name,
+        phone: req.body.phone,
+        bursaryName: req.body.bursaryName || '',
+        subjects: req.body.subjects || {},
+        marks: {}
+    };
+    db.subjects.forEach(sub => {
+        newStudent.subjects[sub] = !!newStudent.subjects[sub];
+    });
+    db.students.push(newStudent);
     writeDb(db);
     res.json({ success: true });
 });
@@ -482,8 +481,10 @@ async function generatePDF(student, db) {
     currentY -= 20;
     
     page.drawText(`Headteacher's Remarks: ${finalRemarks}`, { x: 40, y: currentY, size: 10, font: fontRegular });
-    currentY -= 15;
-    page.drawText(`Bursar Name: ${db.settings.bursaryName}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+    if (student.bursaryName && student.bursaryName.trim() !== '') {
+        currentY -= 15;
+        page.drawText(`Bursary Name: ${student.bursaryName}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+    }
     currentY -= 15;
     page.drawText(`Next Term Fees: ${db.settings.nextTermFees}`, { x: 40, y: currentY, size: 10, font: fontRegular });
     currentY -= 15;
