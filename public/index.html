@@ -34,6 +34,7 @@
             </div>
             <ul class="nav-links">
                 <li class="active" data-tab="students-tab">Students</li>
+                <li data-tab="staff-tab">Staff</li>
                 <li data-tab="marks-tab">Marks Grid</li>
                 <li data-tab="rankings-tab">Ranks & PDFs</li>
                 <li data-tab="whatsapp-tab">WhatsApp Portal</li>
@@ -98,6 +99,62 @@
                             </table>
                         </div>
                         <button id="save-subjects-btn" class="btn success-btn float-right">Save Subject Config</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Staff Tab (Admin Only) -->
+            <section id="staff-tab" class="tab-panel">
+                <div class="header">
+                    <h1>Staff Management</h1>
+                    <p class="subtitle">Create and manage teacher accounts and their assigned subjects.</p>
+                </div>
+                
+                <div class="card">
+                    <form id="add-staff-form" class="inline-form" style="flex-wrap: wrap;">
+                        <input type="hidden" id="staff-id">
+                        <div class="input-group" style="width: 200px;">
+                            <label>Name</label>
+                            <input type="text" id="staff-name" required placeholder="John Doe">
+                        </div>
+                        <div class="input-group" style="width: 200px;">
+                            <label>Username</label>
+                            <input type="text" id="staff-username" required placeholder="jdoe">
+                        </div>
+                        <div class="input-group" style="width: 200px;">
+                            <label>Password</label>
+                            <input type="text" id="staff-password" placeholder="(Leave blank to keep current)">
+                        </div>
+                        <div class="input-group" style="width: 100%; margin-top: 10px;">
+                            <label>Assigned Subjects</label>
+                            <div id="staff-subjects-checkboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">
+                                <!-- Checkboxes populated dynamically in JS -->
+                            </div>
+                        </div>
+                        <div class="input-group" style="width: 100%; margin-top: 15px;">
+                            <button type="submit" class="btn primary-btn" id="save-staff-btn">Save Account</button>
+                            <button type="button" class="btn outline-btn" id="cancel-staff-btn" style="display:none; margin-left: 10px;">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card" style="margin-top: 20px;">
+                    <h3>Teacher Accounts</h3>
+                    <div class="table-container">
+                        <table id="staff-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Username</th>
+                                    <th>Subjects Taught</th>
+                                    <th>Role</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic Content -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>

@@ -207,6 +207,53 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     res.json({ success: true, settings: db.settings });
 });
 
+app.get('/api/users', requireAdmin, (req, res) => {
+    const db = readDb();
+    const safeUsers = db.users.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects }));
+    res.json(safeUsers);
+});
+
+app.post('/api/users', requireAdmin, (req, res) => {
+    const db = readDb();
+    const { id, username, name, password, subjects } = req.body;
+    
+    if (id) {
+        const idx = db.users.findIndex(u => u.id === id);
+        if (idx !== -1) {
+            db.users[idx].username = username;
+            db.users[idx].name = name;
+            db.users[idx].subjects = subjects || [];
+            if (password) {
+                db.users[idx].passwordHash = bcrypt.hashSync(password, 8);
+            }
+        }
+    } else {
+        if (db.users.find(u => u.username === username)) {
+            return res.status(400).json({ error: "Username already exists" });
+        }
+        db.users.push({
+            id: 'teacher_' + Date.now(),
+            username,
+            name,
+            passwordHash: bcrypt.hashSync(password, 8),
+            role: 'teacher',
+            subjects: subjects || []
+        });
+    }
+    writeDb(db);
+    res.json({ success: true });
+});
+
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+    const db = readDb();
+    if (req.params.id === 'admin_1' || req.params.id === req.user.id) {
+        return res.status(400).json({ error: "Cannot delete master admin or yourself." });
+    }
+    db.users = db.users.filter(u => u.id !== req.params.id);
+    writeDb(db);
+    res.json({ success: true });
+});
+
 app.get('/api/students', (req, res) => {
     const db = readDb();
     let ranked = calculateRankings(db);

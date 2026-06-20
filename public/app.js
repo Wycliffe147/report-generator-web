@@ -32,6 +32,7 @@ function checkLogin() {
         
         if (currentUser.role === 'teacher') {
             document.querySelector('[data-tab="students-tab"]').style.display = 'none';
+            document.querySelector('[data-tab="staff-tab"]').style.display = 'none';
             document.querySelector('[data-tab="rankings-tab"]').style.display = 'none';
             document.querySelector('[data-tab="whatsapp-tab"]').style.display = 'none';
             document.querySelector('[data-tab="settings-tab"]').style.display = 'none';
@@ -85,8 +86,10 @@ document.querySelectorAll('.nav-links li').forEach(item => {
         const targetTab = item.getAttribute('data-tab');
         document.getElementById(targetTab).classList.add('active');
         
-        if (targetTab === 'students-tab') renderStudentsTab();
-        if (targetTab === 'marks-tab') renderMarksTab();
+        const tabId = item.getAttribute('data-tab');
+        if (tabId === 'students-tab') renderStudentsTab();
+        if (tabId === 'staff-tab') renderStaffTab();
+        if (tabId === 'marks-tab') renderMarksTab();
         if (targetTab === 'rankings-tab') renderRankingsTab();
         if (targetTab === 'whatsapp-tab') setupWhatsAppStatusPolling();
         if (targetTab === 'settings-tab') loadSettings();
@@ -177,7 +180,110 @@ document.getElementById('student-search').addEventListener('input', (e) => {
     });
 });
 
-// 2. Render Marks Tab
+// 1.5. Staff Tab
+let users = [];
+
+async function renderStaffTab() {
+    const res = await apiFetch('/api/users');
+    users = await res.json();
+    
+    // Populate checkboxes
+    const cbContainer = document.getElementById('staff-subjects-checkboxes');
+    cbContainer.innerHTML = '';
+    subjectsList.forEach(sub => {
+        cbContainer.innerHTML += `
+            <label style="display:flex; align-items:center; gap:5px; font-size:0.9rem;">
+                <input type="checkbox" value="${sub}" class="staff-sub-cb"> ${sub}
+            </label>
+        `;
+    });
+    
+    const tbody = document.querySelector('#staff-table tbody');
+    tbody.innerHTML = '';
+    
+    users.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${u.name}</td>
+            <td>${u.username}</td>
+            <td>${u.role === 'admin' ? 'ALL' : u.subjects.join(', ') || 'None'}</td>
+            <td>${u.role}</td>
+            <td>
+                <button class="btn outline-btn edit-staff-btn" data-id="${u.id}" style="padding: 5px;">Edit</button>
+                <button class="btn danger-btn del-staff-btn" data-id="${u.id}" style="padding: 5px;">Delete</button>
+            </td>
+        `;
+        
+        tr.querySelector('.edit-staff-btn').addEventListener('click', () => {
+            document.getElementById('staff-id').value = u.id;
+            document.getElementById('staff-name').value = u.name;
+            document.getElementById('staff-username').value = u.username;
+            document.getElementById('staff-password').placeholder = "(Leave blank to keep current)";
+            
+            document.querySelectorAll('.staff-sub-cb').forEach(cb => {
+                cb.checked = u.subjects.includes(cb.value);
+            });
+            document.getElementById('cancel-staff-btn').style.display = 'inline-block';
+        });
+        
+        tr.querySelector('.del-staff-btn').addEventListener('click', async () => {
+            if(confirm('Delete this user?')) {
+                try {
+                    await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
+                    renderStaffTab();
+                } catch(e) {
+                    alert('Error deleting user or unauthorized.');
+                }
+            }
+        });
+        
+        tbody.appendChild(tr);
+    });
+}
+
+document.getElementById('add-staff-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('staff-id').value;
+    const name = document.getElementById('staff-name').value;
+    const username = document.getElementById('staff-username').value;
+    const password = document.getElementById('staff-password').value;
+    
+    const subjects = [];
+    document.querySelectorAll('.staff-sub-cb:checked').forEach(cb => subjects.push(cb.value));
+    
+    if (!id && !password) {
+        alert("Password is required for new accounts.");
+        return;
+    }
+    
+    try {
+        const res = await apiFetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, name, username, password, subjects })
+        });
+        
+        if (res.ok) {
+            document.getElementById('add-staff-form').reset();
+            document.getElementById('staff-id').value = '';
+            document.getElementById('cancel-staff-btn').style.display = 'none';
+            renderStaffTab();
+        } else {
+            const err = await res.json();
+            alert("Error: " + err.error);
+        }
+    } catch(e) {
+        alert("Error saving user");
+    }
+});
+
+document.getElementById('cancel-staff-btn').addEventListener('click', () => {
+    document.getElementById('add-staff-form').reset();
+    document.getElementById('staff-id').value = '';
+    document.getElementById('cancel-staff-btn').style.display = 'none';
+});
+
+// 2. Marks Grid Tab
 async function renderMarksTab() {
     await fetchStudents();
     const tbody = document.querySelector('#marks-entry-table tbody');
