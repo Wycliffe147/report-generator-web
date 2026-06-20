@@ -13,6 +13,11 @@ const archiver = require('archiver');
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
+// Prevent Baileys timeouts from crashing the server
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const JWT_SECRET = 'super-secret-excel-academy-key-change-me';
 
 const app = express();
