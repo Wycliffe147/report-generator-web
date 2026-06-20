@@ -394,7 +394,8 @@ async function renderRankingsTab() {
             if (res.ok) {
                 const data = await res.json();
                 btn.innerText = 'Report Generated!';
-                alert(`PDF Generated successfully as: ${data.fileName} in server reports folder.`);
+                window.open(`/api/preview-pdf/${studentId}?token=${authToken}&t=${Date.now()}`, '_blank');
+                setTimeout(() => btn.innerText = 'Preview', 2000);
             } else {
                 alert('Error generating PDF.');
                 btn.innerText = 'Generate Report';
@@ -571,7 +572,7 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
 });
 
 document.getElementById('preview-design-btn').addEventListener('click', () => {
-    window.open('/api/preview-pdf/dummy?t=' + Date.now(), '_blank');
+    window.open(`/api/preview-pdf/dummy?token=${authToken}&t=${Date.now()}`, '_blank');
 });
 
 // Initial load

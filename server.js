@@ -161,7 +161,8 @@ app.post('/api/login', (req, res) => {
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    let token = authHeader && authHeader.split(' ')[1];
+    if (!token && req.query.token) token = req.query.token;
     if (!token) return res.status(401).json({ error: "Access denied" });
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) return res.status(403).json({ error: "Invalid token" });
@@ -412,10 +413,11 @@ async function generatePDF(student, db) {
     const tableTop = height - 200;
     page.drawLine({ start: { x: 40, y: tableTop }, end: { x: 550, y: tableTop }, thickness: 1.5, color: rgb(0.1, 0.1, 0.1) });
     
-    page.drawText('Subject', { x: 50, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Score (%)', { x: 200, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Points', { x: 330, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Remark', { x: 450, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Subject', { x: 45, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Score (%)', { x: 170, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Points', { x: 250, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Remark', { x: 330, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Teacher', { x: 440, y: tableTop - 20, size: 10, font: fontBold });
     
     page.drawLine({ start: { x: 40, y: tableTop - 30 }, end: { x: 550, y: tableTop - 30 }, thickness: 1, color: rgb(0.3, 0.3, 0.3) });
 
@@ -427,10 +429,16 @@ async function generatePDF(student, db) {
             const hasScore = score !== null && score !== undefined && score !== '';
             const gradeInfo = hasScore ? getGrade(score, db) : { grade: '-', points: '-', remark: 'Absent/No Score' };
 
-            page.drawText(sub, { x: 50, y: currentY, size: 10, font: fontRegular });
-            page.drawText(hasScore ? `${score}%` : '-', { x: 200, y: currentY, size: 10, font: fontRegular });
-            page.drawText(String(gradeInfo.points), { x: 330, y: currentY, size: 10, font: fontRegular });
-            page.drawText(gradeInfo.remark, { x: 450, y: currentY, size: 10, font: fontRegular });
+            const teachersForSub = db.users
+                .filter(u => u.role === 'teacher' && (u.subjects || []).includes(sub))
+                .map(u => u.name).join(', ');
+            const teacherName = teachersForSub || '-';
+
+            page.drawText(sub, { x: 45, y: currentY, size: 10, font: fontRegular });
+            page.drawText(hasScore ? `${score}%` : '-', { x: 170, y: currentY, size: 10, font: fontRegular });
+            page.drawText(String(gradeInfo.points), { x: 250, y: currentY, size: 10, font: fontRegular });
+            page.drawText(gradeInfo.remark, { x: 330, y: currentY, size: 10, font: fontRegular });
+            page.drawText(teacherName, { x: 440, y: currentY, size: 9, font: fontRegular });
 
             // Light separation line
             page.drawLine({ start: { x: 40, y: currentY - 8 }, end: { x: 550, y: currentY - 8 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
