@@ -9,7 +9,7 @@ async function loadGlobals() {
         if (!res.ok) return;
         const settings = await res.json();
         masterSubjects = settings.masterSubjects || [];
-        subjectsList = masterSubjects.filter(s => s.active).map(s => s.name);
+        subjectsList = masterSubjects.filter(s => s.active).map(s => s.name).sort();
         subjectsMap = {};
         masterSubjects.forEach(s => subjectsMap[s.name] = s.abbr);
     } catch(e) {}
@@ -270,14 +270,26 @@ async function renderStaffTab() {
     
     users.forEach(u => {
         const tr = document.createElement('tr');
-        const classSubs = (u.subjects || []).filter(s => s.startsWith(currentClass + ':')).map(s => s.split(':')[1]);
+        const classSubs = (u.subjects || [])
+            .filter(s => s.startsWith(currentClass + ':'))
+            .map(s => s.split(':')[1])
+            .sort();
+            
+        let subsDisplay = '<span style="color:#999; font-style:italic;">None</span>';
+        if (u.role === 'admin') {
+            subsDisplay = '<span style="background:#28a745; color:white; padding:3px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;">ALL SUBJECTS</span>';
+        } else if (classSubs.length > 0) {
+            subsDisplay = '<div style="display:flex; flex-wrap:wrap; gap:4px;">' + 
+                          classSubs.map(s => `<span style="background:#eef2f5; color:#333; padding:2px 6px; border-radius:4px; font-size:0.8rem; border:1px solid #dcdcdc;">${s}</span>`).join('') + 
+                          '</div>';
+        }
         
         tr.innerHTML = `
             <td>${u.name}</td>
             <td>${u.username}</td>
             <td>${u.password || '******'}</td>
-            <td>${u.role === 'admin' ? 'ALL' : classSubs.join(', ') || 'None'}</td>
-            <td>${u.role}</td>
+            <td>${subsDisplay}</td>
+            <td><span style="text-transform:capitalize;">${u.role}</span></td>
             <td>
                 <button class="btn outline-btn edit-staff-btn" data-id="${u.id}" style="padding: 5px;">Edit</button>
                 <button class="btn danger-btn del-staff-btn" data-id="${u.id}" style="padding: 5px;">Delete</button>
