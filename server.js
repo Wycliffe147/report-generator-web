@@ -280,7 +280,7 @@ async function generatePDF(student, db) {
     page.drawText(`Student Name: ${student.name}`, { x: 40, y: height - 140, size: 12, font: fontBold });
     page.drawText(`Phone / Guardian Contact: ${student.phone || 'N/A'}`, { x: 40, y: height - 160, size: 10, font: fontRegular });
     page.drawText(`Position: ${student.rank} of ${db.students.length}`, { x: 380, y: height - 140, size: 12, font: fontBold });
-    page.drawText(`MSCE Aggregate Points: ${student.mscePoints} (Best 6 Subjects)`, { x: 380, y: height - 160, size: 10, font: fontRegular });
+    page.drawText(`Total Points: ${student.mscePoints} (Best 6 Subjects)`, { x: 380, y: height - 160, size: 10, font: fontRegular });
 
     // Table Header
     const tableTop = height - 200;
