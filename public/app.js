@@ -94,11 +94,21 @@ async function checkLogin() {
             // Show all tabs including Super Admin
             document.querySelectorAll('.nav-links li').forEach(li => li.style.display = 'block');
             document.getElementById('nav-superadmin').style.display = 'block';
+            // Always land on Students tab
+            document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
+            document.querySelector('[data-tab="students-tab"]').classList.add('active');
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('students-tab').classList.add('active');
             renderStudentsTab();
         } else {
             // admin: show all except superadmin tab
             document.querySelectorAll('.nav-links li').forEach(li => li.style.display = 'block');
             document.getElementById('nav-superadmin').style.display = 'none';
+            // Always land on Students tab
+            document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
+            document.querySelector('[data-tab="students-tab"]').classList.add('active');
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('students-tab').classList.add('active');
             renderStudentsTab();
         }
     } else {
