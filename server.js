@@ -50,16 +50,6 @@ if (!fs.existsSync(DB_FILE)) {
 function readDb() {
     const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
     
-    // Always enforce the comprehensive subject list
-    db.subjects = [
-        "Additional Mathematics", "Agriculture", "Biology", "Bible Knowledge", 
-        "Business Studies", "Computer Studies", "Chemistry", "Chichewa", 
-        "Clothing & Textiles", "Creative Arts", "Geography", "French", 
-        "English", "History", "Home Economics", "Life Skills", 
-        "Mathematics", "Metal Work", "Physics", "Religious & Moral Education", 
-        "Social Studies", "Technical Drawing", "Woodwork"
-    ];
-
     if (!db.settings) {
         db.settings = {
             schoolName: "EXCEL ACADEMY",
@@ -100,6 +90,37 @@ function readDb() {
     if (db.settings.currentTerm === undefined) db.settings.currentTerm = "Term One";
     if (db.settings.headerContactLabel === undefined) db.settings.headerContactLabel = "School Phone";
     if (db.settings.headerContactNumber === undefined) db.settings.headerContactNumber = "0999000000";
+    
+    if (!db.settings.masterSubjects) {
+        db.settings.masterSubjects = [
+            { name: "Additional Mathematics", abbr: "ADD", active: true },
+            { name: "Agriculture", abbr: "AGR", active: true },
+            { name: "Biology", abbr: "BIO", active: true },
+            { name: "Bible Knowledge", abbr: "BK", active: true },
+            { name: "Business Studies", abbr: "BUS", active: true },
+            { name: "Computer Studies", abbr: "Comp", active: true },
+            { name: "Chemistry", abbr: "CHEM", active: true },
+            { name: "Chichewa", abbr: "CHIC", active: true },
+            { name: "Clothing & Textiles", abbr: "C&T", active: true },
+            { name: "Creative Arts", abbr: "ART", active: true },
+            { name: "Geography", abbr: "GEO", active: true },
+            { name: "French", abbr: "FRE", active: true },
+            { name: "English", abbr: "ENG", active: true },
+            { name: "History", abbr: "HIST", active: true },
+            { name: "Home Economics", abbr: "HEC", active: true },
+            { name: "Life Skills", abbr: "LIFE", active: true },
+            { name: "Mathematics", abbr: "MATH", active: true },
+            { name: "Metal Work", abbr: "MET", active: true },
+            { name: "Physics", abbr: "PHY", active: true },
+            { name: "Religious & Moral Education", abbr: "RME", active: true },
+            { name: "Social Studies", abbr: "SOS", active: true },
+            { name: "Technical Drawing", abbr: "TD", active: true },
+            { name: "Woodwork", abbr: "WOOD", active: true }
+        ];
+    }
+    
+    // Always sync db.subjects with masterSubjects
+    db.subjects = db.settings.masterSubjects.filter(s => s.active).map(s => s.name);
     
     writeDb(db);
     return db;
@@ -226,6 +247,16 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     if (req.body.currentTerm !== undefined) db.settings.currentTerm = req.body.currentTerm;
     if (req.body.headerContactLabel !== undefined) db.settings.headerContactLabel = req.body.headerContactLabel;
     if (req.body.headerContactNumber !== undefined) db.settings.headerContactNumber = req.body.headerContactNumber;
+    
+    if (req.body.masterSubjects) {
+        try {
+            const parsed = JSON.parse(req.body.masterSubjects);
+            db.settings.masterSubjects = parsed;
+            db.subjects = parsed.filter(s => s.active).map(s => s.name);
+        } catch (e) {
+            console.error("Error parsing masterSubjects", e);
+        }
+    }
     
     if (req.body.gradingSystem) {
         try {

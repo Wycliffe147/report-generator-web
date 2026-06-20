@@ -329,6 +329,27 @@
                         </div>
                         <button type="button" id="add-grade-rule-btn" class="btn outline-btn" style="border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent; margin-bottom: 20px;">+ Add Grade Rule</button>
 
+                        <hr style="margin: 30px 0; border: none; border-top: 1px solid var(--border-color);">
+
+                        <h3>Subjects Configuration</h3>
+                        <p class="subtitle" style="margin-bottom:15px;">Select subjects offered at the school, or add custom ones.</p>
+                        <div class="table-container" style="margin-bottom: 10px;">
+                            <table id="master-subjects-table" style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr>
+                                        <th>Offered?</th>
+                                        <th>Subject Name</th>
+                                        <th>Abbreviation</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="master-subjects-tbody">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <button type="button" id="add-subject-btn" class="btn outline-btn" style="border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent; margin-bottom: 20px;">+ Add Custom Subject</button>
+
                         <button type="submit" class="btn primary-btn" style="width:100%;">Save Settings</button>
                         <button type="button" id="preview-design-btn" class="btn outline-btn" style="width:100%; margin-top:10px; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;">Preview Design (Dummy Student)</button>
                     </form>

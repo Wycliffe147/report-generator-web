@@ -1,25 +1,22 @@
 let students = [];
-const subjectsList = [
-    "Additional Mathematics", "Agriculture", "Biology", "Bible Knowledge", 
-    "Business Studies", "Computer Studies", "Chemistry", "Chichewa", 
-    "Clothing & Textiles", "Creative Arts", "Geography", "French", 
-    "English", "History", "Home Economics", "Life Skills", 
-    "Mathematics", "Metal Work", "Physics", "Religious & Moral Education", 
-    "Social Studies", "Technical Drawing", "Woodwork"
-];
+let masterSubjects = [];
+let subjectsList = [];
+let subjectsMap = {};
+
+async function loadGlobals() {
+    try {
+        const res = await apiFetch('/api/settings');
+        if (!res.ok) return;
+        const settings = await res.json();
+        masterSubjects = settings.masterSubjects || [];
+        subjectsList = masterSubjects.filter(s => s.active).map(s => s.name);
+        subjectsMap = {};
+        masterSubjects.forEach(s => subjectsMap[s.name] = s.abbr);
+    } catch(e) {}
+}
 
 function getAbbreviation(sub) {
-    const map = {
-        'Additional Mathematics': 'ADD', 'Agriculture': 'AGR', 'Biology': 'BIO', 
-        'Bible Knowledge': 'BK', 'Business Studies': 'BUS', 'Computer Studies': 'Comp', 
-        'Chemistry': 'CHEM', 'Chichewa': 'CHIC', 'Clothing & Textiles': 'C&T', 
-        'Creative Arts': 'ART', 'Geography': 'GEO', 'French': 'FRE', 
-        'English': 'ENG', 'History': 'HIST', 'Home Economics': 'HEC', 
-        'Life Skills': 'LIFE', 'Mathematics': 'MATH', 'Metal Work': 'MET', 
-        'Physics': 'PHY', 'Religious & Moral Education': 'RME', 
-        'Social Studies': 'SOS', 'Technical Drawing': 'TD', 'Woodwork': 'WOOD'
-    };
-    return map[sub] || sub.substring(0,3).toUpperCase();
+    return subjectsMap[sub] || sub.substring(0,3).toUpperCase();
 }
 
 let authToken = localStorage.getItem('token');
@@ -45,11 +42,13 @@ function handleLogout() {
     document.getElementById('main-app').style.display = 'none';
 }
 
-function checkLogin() {
+async function checkLogin() {
     if (authToken && currentUser) {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         document.getElementById('user-greeting').innerText = `Welcome, ${currentUser.name}`;
+        
+        await loadGlobals();
         
         if (currentUser.role === 'teacher') {
             document.querySelector('[data-tab="students-tab"]').style.display = 'none';
@@ -583,7 +582,29 @@ async function loadSettings() {
     if (settings.gradingSystem) {
         settings.gradingSystem.sort((a,b) => b.min - a.min).forEach(rule => addGradingRow(rule));
     }
+    
+    const mtbody = document.getElementById('master-subjects-tbody');
+    if (mtbody) {
+        mtbody.innerHTML = '';
+        (settings.masterSubjects || []).forEach(sub => addMasterSubjectRow(sub));
+    }
 }
+
+function addMasterSubjectRow(sub = {name: '', abbr: '', active: true}) {
+    const tbody = document.getElementById('master-subjects-tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="checkbox" class="s-active" ${sub.active ? 'checked' : ''}></td>
+        <td><input type="text" class="s-name" value="${sub.name}" required style="width: 150px;"></td>
+        <td><input type="text" class="s-abbr" value="${sub.abbr}" required style="width: 80px;"></td>
+        <td><button type="button" class="btn danger-btn remove-subject-btn" style="padding:5px;">Remove</button></td>
+    `;
+    tr.querySelector('.remove-subject-btn').addEventListener('click', () => tr.remove());
+    tbody.appendChild(tr);
+}
+
+const addSubBtn = document.getElementById('add-subject-btn');
+if (addSubBtn) addSubBtn.addEventListener('click', () => addMasterSubjectRow());
 
 function addGradingRow(rule = {min: '', points: '', remark: ''}) {
     const tbody = document.getElementById('grading-tbody');
@@ -614,6 +635,16 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     });
     formData.append('gradingSystem', JSON.stringify(rules));
     
+    const mSubjects = [];
+    document.querySelectorAll('#master-subjects-tbody tr').forEach(tr => {
+        mSubjects.push({
+            active: tr.querySelector('.s-active').checked,
+            name: tr.querySelector('.s-name').value,
+            abbr: tr.querySelector('.s-abbr').value
+        });
+    });
+    formData.append('masterSubjects', JSON.stringify(mSubjects));
+    
     try {
         const res = await apiFetch('/api/settings', {
             method: 'POST',
@@ -623,6 +654,7 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
         if (res.ok) {
             alert('Settings saved successfully!');
             document.getElementById('school-logo').value = '';
+            await loadGlobals();
         }
     } catch(e) {
         alert('Error saving settings.');
