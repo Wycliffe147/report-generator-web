@@ -577,6 +577,41 @@ app.delete('/api/students/:id', requireAdmin, (req, res) => {
     res.json({ success: true });
 });
 
+// Class promotion: bumps every student up one form, wipes marks, deletes Form 4
+app.post('/api/promote-classes', requireAdmin, (req, res) => {
+    const schoolId = req.user ? req.user.schoolId : 'default';
+    const db = readDb(schoolId);
+    const { preserveSubjects } = req.body;
+
+    const classOrder = ['Form 1', 'Form 2', 'Form 3', 'Form 4'];
+    const nextClass = { 'Form 1': 'Form 2', 'Form 2': 'Form 3', 'Form 3': 'Form 4' };
+
+    let graduated = 0;
+    let promoted = 0;
+
+    // Step 1: Count and remove Form 4 (graduated)
+    const form4 = db.students.filter(s => (s.classLevel || 'Form 1') === 'Form 4');
+    graduated = form4.length;
+    db.students = db.students.filter(s => (s.classLevel || 'Form 1') !== 'Form 4');
+
+    // Step 2: Process Form 3 → 4, Form 2 → 3, Form 1 → 2 (highest first to avoid double-bump)
+    ['Form 3', 'Form 2', 'Form 1'].forEach(currentClass => {
+        db.students.forEach(s => {
+            if ((s.classLevel || 'Form 1') === currentClass) {
+                s.classLevel = nextClass[currentClass];
+                s.marks = {}; // always wipe marks
+                if (!preserveSubjects) {
+                    s.subjects = {};
+                }
+                promoted++;
+            }
+        });
+    });
+
+    writeDb();
+    res.json({ success: true, promoted, graduated });
+});
+
 app.post('/api/marks', (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
     const { id, marks } = req.body;

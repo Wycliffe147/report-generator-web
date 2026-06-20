@@ -367,6 +367,72 @@ function openEditSchoolModal(schoolId, schoolName, currentAdmin) {
     modal.style.display = 'flex';
 }
 
+// ── Class Promotion Logic ──────────────────────────────────────────
+document.getElementById('promote-classes-btn')?.addEventListener('click', () => {
+    // Reset modal state
+    document.getElementById('preserve-subjects-cb').checked = true;
+    document.getElementById('promote-confirm-cb').checked = false;
+    const confirmBtn = document.getElementById('promote-confirm-btn');
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.4';
+    confirmBtn.style.cursor = 'not-allowed';
+    document.getElementById('promote-result').style.display = 'none';
+    document.getElementById('promote-modal').style.display = 'flex';
+});
+
+document.getElementById('promote-cancel-btn')?.addEventListener('click', () => {
+    document.getElementById('promote-modal').style.display = 'none';
+});
+
+// Enable confirm button only when "I understand" checkbox is ticked
+document.getElementById('promote-confirm-cb')?.addEventListener('change', (e) => {
+    const confirmBtn = document.getElementById('promote-confirm-btn');
+    confirmBtn.disabled = !e.target.checked;
+    confirmBtn.style.opacity = e.target.checked ? '1' : '0.4';
+    confirmBtn.style.cursor = e.target.checked ? 'pointer' : 'not-allowed';
+});
+
+document.getElementById('promote-confirm-btn')?.addEventListener('click', async () => {
+    const preserveSubjects = document.getElementById('preserve-subjects-cb').checked;
+    const confirmBtn = document.getElementById('promote-confirm-btn');
+    const resultEl = document.getElementById('promote-result');
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Promoting...';
+
+    try {
+        const res = await apiFetch('/api/promote-classes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preserveSubjects })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            resultEl.style.color = '#059669';
+            resultEl.textContent = `✅ Done! ${data.promoted} student(s) promoted, ${data.graduated} Form 4 student(s) graduated and removed.`;
+            resultEl.style.display = 'block';
+            // Reload student data in background
+            await fetchStudents();
+            setTimeout(() => {
+                document.getElementById('promote-modal').style.display = 'none';
+            }, 3500);
+        } else {
+            resultEl.style.color = '#dc2626';
+            resultEl.textContent = '❌ Error: ' + (data.error || 'Promotion failed.');
+            resultEl.style.display = 'block';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '🎓 Confirm Promotion';
+        }
+    } catch (e) {
+        resultEl.style.color = '#dc2626';
+        resultEl.textContent = '❌ Network error. Please try again.';
+        resultEl.style.display = 'block';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = '🎓 Confirm Promotion';
+    }
+});
+
+// ── Edit School Modal logic ────────────────────────────────────────
 document.getElementById('edit-school-cancel')?.addEventListener('click', () => {
     document.getElementById('edit-school-modal').style.display = 'none';
 });
