@@ -641,7 +641,7 @@ async function generatePDF(student, db) {
         if (student.subjects[sub]) {
             const score = student.marks[sub];
             if (score !== null && score !== undefined && score !== '') {
-                const gradeInfo = getGrade(score, db);
+                const gradeInfo = getGrade(score, db, student.classLevel || 'Form 1');
                 if (gradeInfo.points !== '-' && Number(gradeInfo.points) < 9) {
                     passedSubjectsCount++;
                     if (sub === 'ENG' || sub === 'English') englishPassed = true;
@@ -690,8 +690,9 @@ async function generatePDF(student, db) {
                 color: rgb(0.1, 0.3, 0.6)
             });
             
-            // Subject Label (centered under bar)
-            page.drawText(data.subject, { x: x + (barWidth/2) - (data.subject.length * 2.5), y: chartY - 12, size: 8, font: fontRegular });
+            // Subject Label (centered under bar, truncated to prevent overflow)
+            const shortSub = data.subject.substring(0, 5).toUpperCase();
+            page.drawText(shortSub, { x: x + (barWidth/2) - (shortSub.length * 2.5), y: chartY - 12, size: 8, font: fontRegular });
             
             // Score Label (centered above bar)
             page.drawText(String(data.score), { x: x + (barWidth/2) - 5, y: chartY + barHeight + 3, size: 8, font: fontRegular });
