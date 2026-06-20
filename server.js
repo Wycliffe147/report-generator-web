@@ -67,6 +67,7 @@ async function initDB() {
 }
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+if (!fs.existsSync(REPORTS_DIR)) fs.mkdirSync(REPORTS_DIR);
 const upload = multer({ dest: UPLOADS_DIR });
 
 app.use(bodyParser.json());
