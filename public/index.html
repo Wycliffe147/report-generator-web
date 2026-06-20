@@ -276,10 +276,15 @@
                         <p class="subtitle" style="margin-bottom:15px;">Information displayed at the bottom of every report card.</p>
                         
                         <div class="input-group">
-                            <label for="headteacher-remarks">Headteacher's Remarks</label>
-                            <input type="text" id="headteacher-remarks" name="headteacherRemarks" required placeholder="Promoted to next class...">
+                            <label for="headteacher-remarks-pass">Headteacher's Remarks (Pass)</label>
+                            <input type="text" id="headteacher-remarks-pass" name="headteacherRemarksPass" required placeholder="Promoted to next class.">
+                            <small>Student passes if they get < 9 points in at least 6 subjects (including English).</small>
                         </div>
-                        <div class="input-group">
+                        <div class="input-group" style="margin-top: 10px;">
+                            <label for="headteacher-remarks-fail">Headteacher's Remarks (Fail)</label>
+                            <input type="text" id="headteacher-remarks-fail" name="headteacherRemarksFail" required placeholder="Failed. Work harder next term.">
+                        </div>
+                        <div class="input-group" style="margin-top: 10px;">
                             <label for="bursary-name">Bursar Name</label>
                             <input type="text" id="bursary-name" name="bursaryName" required placeholder="Mr. Smith">
                         </div>

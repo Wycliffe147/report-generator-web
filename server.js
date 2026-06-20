@@ -75,7 +75,8 @@ function readDb() {
     }
     
     // Default new fields if missing
-    if (db.settings.headteacherRemarks === undefined) db.settings.headteacherRemarks = "Promoted to next class. Work harder next term.";
+    if (db.settings.headteacherRemarksPass === undefined) db.settings.headteacherRemarksPass = "Promoted to next class. Well done!";
+    if (db.settings.headteacherRemarksFail === undefined) db.settings.headteacherRemarksFail = "Failed. Work harder next term.";
     if (db.settings.bursaryName === undefined) db.settings.bursaryName = "Mr. Administrator";
     if (db.settings.nextTermFees === undefined) db.settings.nextTermFees = "MK 50,000";
     if (db.settings.nextTermDate === undefined) db.settings.nextTermDate = "10 September 2026";
@@ -198,7 +199,8 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     if (req.body.schoolName) db.settings.schoolName = req.body.schoolName;
     if (req.body.subtitle) db.settings.subtitle = req.body.subtitle;
     if (req.body.themeColor) db.settings.themeColor = req.body.themeColor;
-    if (req.body.headteacherRemarks !== undefined) db.settings.headteacherRemarks = req.body.headteacherRemarks;
+    if (req.body.headteacherRemarksPass !== undefined) db.settings.headteacherRemarksPass = req.body.headteacherRemarksPass;
+    if (req.body.headteacherRemarksFail !== undefined) db.settings.headteacherRemarksFail = req.body.headteacherRemarksFail;
     if (req.body.bursaryName !== undefined) db.settings.bursaryName = req.body.bursaryName;
     if (req.body.nextTermFees !== undefined) db.settings.nextTermFees = req.body.nextTermFees;
     if (req.body.nextTermDate !== undefined) db.settings.nextTermDate = req.body.nextTermDate;
@@ -457,10 +459,29 @@ async function generatePDF(student, db) {
         }
     });
 
+    // Calculate Pass/Fail Status
+    let passedSubjectsCount = 0;
+    let englishPassed = false;
+    db.subjects.forEach(sub => {
+        if (student.subjects[sub]) {
+            const score = student.marks[sub];
+            if (score !== null && score !== undefined && score !== '') {
+                const gradeInfo = getGrade(score, db);
+                if (gradeInfo.points !== '-' && Number(gradeInfo.points) < 9) {
+                    passedSubjectsCount++;
+                    if (sub === 'ENG') englishPassed = true;
+                }
+            }
+        }
+    });
+    
+    const hasPassed = englishPassed && passedSubjectsCount >= 6;
+    const finalRemarks = hasPassed ? db.settings.headteacherRemarksPass : db.settings.headteacherRemarksFail;
+
     // Summary Details at Bottom
     currentY -= 20;
     
-    page.drawText(`Headteacher's Remarks: ${db.settings.headteacherRemarks}`, { x: 40, y: currentY, size: 10, font: fontRegular });
+    page.drawText(`Headteacher's Remarks: ${finalRemarks}`, { x: 40, y: currentY, size: 10, font: fontRegular });
     currentY -= 15;
     page.drawText(`Bursar Name: ${db.settings.bursaryName}`, { x: 40, y: currentY, size: 10, font: fontRegular });
     currentY -= 15;

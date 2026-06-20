@@ -518,8 +518,9 @@ async function loadSettings() {
     document.getElementById('school-subtitle').value = settings.subtitle || '';
     document.getElementById('theme-color').value = settings.themeColor || '#142e5c';
     
-    if (document.getElementById('headteacher-remarks')) {
-        document.getElementById('headteacher-remarks').value = settings.headteacherRemarks || '';
+    if (document.getElementById('headteacher-remarks-pass')) {
+        document.getElementById('headteacher-remarks-pass').value = settings.headteacherRemarksPass || '';
+        document.getElementById('headteacher-remarks-fail').value = settings.headteacherRemarksFail || '';
         document.getElementById('bursary-name').value = settings.bursaryName || '';
         document.getElementById('next-term-fees').value = settings.nextTermFees || '';
         document.getElementById('next-term-date').value = settings.nextTermDate || '';
