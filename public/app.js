@@ -202,6 +202,65 @@ if (btnDownloadSelected) {
     });
 }
 
+// Send Selected via WhatsApp
+const btnSendSelected = document.getElementById('btn-send-selected');
+if (btnSendSelected) {
+    btnSendSelected.addEventListener('click', async () => {
+        const selected = Array.from(document.querySelectorAll('.report-cb:checked')).map(cb => cb.value);
+        if (selected.length === 0) {
+            return alert("Please select at least one student.");
+        }
+
+        const progressBox = document.getElementById('bulk-send-progress');
+        const progressFill = document.getElementById('bulk-send-fill');
+        const progressText = document.getElementById('bulk-send-text');
+
+        progressBox.style.display = 'block';
+        progressFill.style.width = '0%';
+        btnSendSelected.disabled = true;
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < selected.length; i++) {
+            const studentId = selected[i];
+            const student = students.find(s => s.id === studentId);
+            const name = student ? student.name : 'Unknown';
+            
+            progressText.innerText = `Sending report for ${name} (${i + 1}/${selected.length})...`;
+            
+            try {
+                const res = await apiFetch('/api/whatsapp/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId })
+                });
+
+                if (res.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } catch (e) {
+                failCount++;
+            }
+
+            const percentage = Math.round(((i + 1) / selected.length) * 100);
+            progressFill.style.width = `${percentage}%`;
+
+            // Delay between sends to prevent blocking/spam trigger
+            await new Promise(resolve => setTimeout(resolve, 4000));
+        }
+
+        progressText.innerText = `Completed! Sent: ${successCount}, Failed: ${failCount}`;
+        btnSendSelected.disabled = false;
+        
+        setTimeout(() => {
+            progressBox.style.display = 'none';
+        }, 5000);
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     renderHeader();
 });
