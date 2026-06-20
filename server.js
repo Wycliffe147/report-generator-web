@@ -654,7 +654,8 @@ async function generatePDF(student, db) {
 
 app.post('/api/generate-pdf/:id', async (req, res) => {
     const db = readDb();
-    const ranked = calculateRankings(db);
+    rankStudents(db);
+    const ranked = db.students;
     const student = ranked.find(s => s.id === req.params.id);
     
     if (student) {
@@ -697,7 +698,8 @@ app.get('/api/preview-pdf/dummy', async (req, res) => {
 
 app.get('/api/preview-pdf/:id', async (req, res) => {
     const db = readDb();
-    const ranked = calculateRankings(db);
+    rankStudents(db);
+    const ranked = db.students;
     const student = ranked.find(s => s.id === req.params.id);
     
     if (student) {
@@ -774,7 +776,8 @@ app.get('/api/whatsapp/status', (req, res) => {
 app.post('/api/whatsapp/send', async (req, res) => {
     const { studentId } = req.body;
     const db = readDb();
-    const ranked = calculateRankings(db);
+    rankStudents(db);
+    const ranked = db.students;
     const student = ranked.find(s => s.id === studentId);
 
     if (!student) {
