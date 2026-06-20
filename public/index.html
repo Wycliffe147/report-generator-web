@@ -212,6 +212,11 @@
                 <div class="card full-width-card">
                     <div style="margin-bottom: 15px; display: flex; gap: 10px;">
                         <button id="btn-download-selected" class="btn" style="background-color: var(--secondary-color);">⬇️ Download Selected as ZIP</button>
+                        <button id="btn-send-selected" class="btn" style="background-color: #25D366; color: white;">📤 Send Selected via WhatsApp</button>
+                    </div>
+                    <div id="bulk-send-progress" style="display: none; margin-bottom: 15px;">
+                        <div class="progress-bar" style="height: 10px; background: #eee; border-radius: 5px; overflow: hidden;"><div id="bulk-send-fill" style="height: 100%; width: 0%; background: #25D366; transition: width 0.3s;"></div></div>
+                        <p id="bulk-send-text" style="font-size: 0.9rem; margin-top: 5px;"></p>
                     </div>
                     <div class="table-container">
                         <table id="rankings-table">
