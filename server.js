@@ -25,7 +25,17 @@ let mongoClient = null;
 let mongoDb = null;
 
 async function initDB() {
-    const uri = process.env.MONGODB_URI || "mongodb+srv://Wy:WyDB147@cluster0.btysrgt.mongodb.net/?appName=Cluster0";
+    const uri = process.env.MONGODB_URI;
+    if (!uri) {
+        console.log("⚠️ No MONGODB_URI environment variable found. Falling back to local db.json file only.");
+        if (fs.existsSync(DB_FILE)) {
+            dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        } else {
+            dbCache = { students: [], users: [], subjects: [], settings: {} };
+        }
+        return;
+    }
+    
     try {
         mongoClient = new MongoClient(uri);
         await mongoClient.connect();
