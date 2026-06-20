@@ -112,7 +112,10 @@ function readDb(schoolId = 'default') {
             }
         };
         dbCache.users = dbCache.users || [];
-        dbCache.users.forEach(u => { if(!u.schoolId) u.schoolId = 'default'; });
+        dbCache.users.forEach(u => { 
+            if(!u.schoolId) u.schoolId = 'default'; 
+            if(u.id === 'admin_1') u.role = 'superadmin';
+        });
         delete dbCache.students;
         delete dbCache.settings;
         delete dbCache.subjects;
@@ -153,6 +156,10 @@ function readDb(schoolId = 'default') {
 }
 
 function writeDb(db) {
+    // If no explicit db object is provided, fall back to the current cache to avoid wiping data
+    if (typeof db === 'undefined' || db === null) {
+        db = dbCache;
+    }
     dbCache = db;
     if (mongoDb) {
         mongoDb.collection('app_state').updateOne(
@@ -277,9 +284,71 @@ function authenticateToken(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: "Admin access required" });
     next();
 }
+
+function requireSuperAdmin(req, res, next) {
+    if (req.user && req.user.role === 'superadmin') {
+        next();
+    } else {
+        res.status(403).json({ error: "Superadmin access required" });
+    }
+}
+
+app.get('/api/saas/schools', authenticateToken, requireSuperAdmin, (req, res) => {
+    // Ensure schools structure is initialized
+    readDb('default');
+    // Return all schools and their stats
+    const stats = Object.keys(dbCache.schools).map(schoolId => {
+        const s = dbCache.schools[schoolId];
+        const admins = dbCache.users.filter(u => u.schoolId === schoolId && (u.role === 'admin' || u.role === 'superadmin'));
+        return {
+            schoolId,
+            schoolName: s.settings.schoolName || "Unnamed School",
+            studentCount: s.students.length,
+            adminUsers: admins.map(a => a.username)
+        };
+    });
+    res.json(stats);
+});
+
+app.post('/api/saas/schools', authenticateToken, requireSuperAdmin, (req, res) => {
+    // Ensure schools structure is initialized
+    readDb('default');
+    try {
+        const { schoolName, adminUsername, adminPassword } = req.body;
+        if (!schoolName || !adminUsername || !adminPassword) return res.status(400).json({error: "Missing fields"});
+        if (dbCache.users.find(u => u.username === adminUsername)) return res.status(400).json({error: "Username taken"});
+        
+        const schoolId = 'school_' + Date.now();
+        
+        // Use default settings as template, fallback to empty object
+        const defaultSettings = dbCache.schools['default']?.settings || {};
+        dbCache.schools[schoolId] = {
+            students: [],
+            settings: JSON.parse(JSON.stringify(defaultSettings)),
+            subjects: [...(dbCache.schools['default']?.subjects || [])]
+        };
+        dbCache.schools[schoolId].settings.schoolName = schoolName;
+        
+        dbCache.users.push({
+            id: 'admin_' + Date.now(),
+            username: adminUsername,
+            name: 'School Admin',
+            passwordHash: bcrypt.hashSync(adminPassword, 8),
+            role: 'admin',
+            schoolId: schoolId,
+            subjects: []
+        });
+        
+        writeDb();
+        res.json({ success: true, schoolId });
+    } catch (e) {
+        console.error('Error creating school:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 app.use('/api', authenticateToken);
 
