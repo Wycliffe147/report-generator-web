@@ -9,7 +9,7 @@ const QRCode = require('qrcode');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const archiver = require('archiver');
+const { ZipArchive } = require('archiver');
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
@@ -751,7 +751,7 @@ app.post('/api/generate-pdf-bulk', async (req, res) => {
     rankStudents(db);
     
     try {
-        const archive = archiver('zip', { zlib: { level: 9 } });
+        const archive = new ZipArchive({ zlib: { level: 9 } });
         
         res.attachment('Report_Cards.zip');
         archive.pipe(res);
