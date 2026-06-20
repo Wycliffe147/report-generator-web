@@ -320,3 +320,22 @@ td input[type="number"]:disabled {
         padding: 1.5rem;
     }
 }
+
+/* Checkbox labels inside staff subjects must not inherit block/full-width rules */
+#staff-subjects-checkboxes label {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+#staff-subjects-checkboxes input[type="checkbox"] {
+    width: auto !important;
+    padding: 0 !important;
+    background: none !important;
+    border: revert !important;
+    flex-shrink: 0;
+}

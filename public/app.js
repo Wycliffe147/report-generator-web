@@ -259,10 +259,7 @@ async function renderStaffTab() {
     cbContainer.innerHTML = '';
     subjectsList.forEach(sub => {
         cbContainer.innerHTML += `
-            <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.9rem; line-height:1.3; cursor:pointer;">
-                <input type="checkbox" value="${sub}" class="staff-sub-cb" style="margin-top:2px;"> 
-                <span style="flex:1;">${sub}</span>
-            </label>
+            <label><input type="checkbox" value="${sub}" class="staff-sub-cb"> ${sub}</label>
         `;
     });
     
