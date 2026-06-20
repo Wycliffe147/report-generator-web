@@ -15,6 +15,7 @@ document.querySelectorAll('.nav-links li').forEach(item => {
         if (targetTab === 'marks-tab') renderMarksTab();
         if (targetTab === 'rankings-tab') renderRankingsTab();
         if (targetTab === 'whatsapp-tab') setupWhatsAppStatusPolling();
+        if (targetTab === 'settings-tab') loadSettings();
     });
 });
 
@@ -171,7 +172,8 @@ async function renderRankingsTab() {
             <td>${student.totalMarks}</td>
             <td>${student.mscePoints}</td>
             <td>
-                <button class="btn primary-btn download-pdf-btn" data-student-id="${student.id}">Generate Report</button>
+                <button class="btn primary-btn download-pdf-btn" data-student-id="${student.id}">Save PDF</button>
+                <button class="btn outline-btn preview-pdf-btn" data-student-id="${student.id}" style="border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;">Preview</button>
                 <button class="btn success-btn send-wa-btn" data-student-id="${student.id}">WhatsApp Report</button>
             </td>
         `;
@@ -191,6 +193,13 @@ async function renderRankingsTab() {
                 alert('Error generating PDF.');
                 btn.innerText = 'Generate Report';
             }
+        });
+    });
+
+    tbody.querySelectorAll('.preview-pdf-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const studentId = btn.getAttribute('data-student-id');
+            window.open(`/api/preview-pdf/${studentId}?t=${Date.now()}`, '_blank');
         });
     });
 
@@ -291,6 +300,37 @@ document.getElementById('send-all-btn').addEventListener('click', async () => {
     }
 
     progressText.innerText = `Completed bulk send! Success: ${successCount}, Failed: ${failCount}`;
+});
+
+// 5. Settings Tab
+async function loadSettings() {
+    const res = await fetch('/api/settings');
+    const settings = await res.json();
+    
+    document.getElementById('school-name').value = settings.schoolName || '';
+    document.getElementById('school-subtitle').value = settings.subtitle || '';
+    document.getElementById('theme-color').value = settings.themeColor || '#142e5c';
+}
+
+document.getElementById('settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    
+    const res = await fetch('/api/settings', {
+        method: 'POST',
+        body: formData // no Content-Type header so browser sets it automatically with boundary
+    });
+    
+    if (res.ok) {
+        alert('Settings saved successfully! The PDF layout has been updated.');
+        document.getElementById('school-logo').value = ''; // clear file input
+    } else {
+        alert('Error saving settings.');
+    }
+});
+
+document.getElementById('preview-design-btn').addEventListener('click', () => {
+    window.open('/api/preview-pdf/dummy?t=' + Date.now(), '_blank');
 });
 
 // Initial load

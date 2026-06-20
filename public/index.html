@@ -20,6 +20,7 @@
                 <li data-tab="marks-tab">Marks Grid</li>
                 <li data-tab="rankings-tab">Ranks & PDFs</li>
                 <li data-tab="whatsapp-tab">WhatsApp Portal</li>
+                <li data-tab="settings-tab">Settings</li>
             </ul>
         </nav>
 
@@ -179,6 +180,37 @@
                             <span id="bulk-progress-text">Processing...</span>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <!-- 5. Settings Tab -->
+            <section id="settings-tab" class="tab-panel">
+                <div class="panel-header">
+                    <h1>Global Settings & Report Design</h1>
+                </div>
+                <div class="card full-width-card" style="max-width: 600px; margin: 0 auto;">
+                    <h3>Edit Report Card Appearance</h3>
+                    <form id="settings-form" enctype="multipart/form-data">
+                        <div class="input-group">
+                            <label for="school-name">School Name</label>
+                            <input type="text" id="school-name" name="schoolName" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="school-subtitle">Subtitle / Description</label>
+                            <input type="text" id="school-subtitle" name="subtitle" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="theme-color">Theme Color (Header Background)</label>
+                            <input type="color" id="theme-color" name="themeColor" style="height:40px; width:100%; cursor:pointer;">
+                        </div>
+                        <div class="input-group">
+                            <label for="school-logo">School Logo (PNG or JPG)</label>
+                            <input type="file" id="school-logo" name="logo" accept="image/png, image/jpeg">
+                            <small>Leave blank to keep the current logo.</small>
+                        </div>
+                        <button type="submit" class="btn primary-btn" style="width:100%; margin-top:20px;">Save Settings</button>
+                        <button type="button" id="preview-design-btn" class="btn outline-btn" style="width:100%; margin-top:10px; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;">Preview Design (Dummy Student)</button>
+                    </form>
                 </div>
             </section>
         </main>

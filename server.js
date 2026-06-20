@@ -6,26 +6,48 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'db.json');
 const REPORTS_DIR = path.join(__dirname, 'reports');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+const upload = multer({ dest: UPLOADS_DIR });
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Initialize Database
 if (!fs.existsSync(DB_FILE)) {
     const initialDb = {
         students: [],
-        subjects: ["AGR", "BK", "BIO", "CHEM", "CHICH", "COMP", "ENG", "GEO", "HIST", "PHY", "MATH", "SOS"]
+        subjects: ["AGR", "BK", "BIO", "CHEM", "CHICH", "COMP", "ENG", "GEO", "HIST", "PHY", "MATH", "SOS"],
+        settings: {
+            schoolName: "EXCEL ACADEMY",
+            subtitle: "Official Student Progress Report Card",
+            themeColor: "#142e5c",
+            logoPath: null
+        }
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2));
 }
 
 function readDb() {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    if (!db.settings) {
+        db.settings = {
+            schoolName: "EXCEL ACADEMY",
+            subtitle: "Official Student Progress Report Card",
+            themeColor: "#142e5c",
+            logoPath: null
+        };
+        writeDb(db);
+    }
+    return db;
 }
 
 function writeDb(data) {
@@ -102,6 +124,24 @@ function calculateRankings(db) {
 }
 
 // API Routes
+app.get('/api/settings', (req, res) => {
+    res.json(readDb().settings);
+});
+
+app.post('/api/settings', upload.single('logo'), (req, res) => {
+    const db = readDb();
+    if (req.body.schoolName) db.settings.schoolName = req.body.schoolName;
+    if (req.body.subtitle) db.settings.subtitle = req.body.subtitle;
+    if (req.body.themeColor) db.settings.themeColor = req.body.themeColor;
+    
+    if (req.file) {
+        db.settings.logoPath = req.file.path;
+    }
+    
+    writeDb(db);
+    res.json({ success: true, settings: db.settings });
+});
+
 app.get('/api/students', (req, res) => {
     const db = readDb();
     const ranked = calculateRankings(db);
@@ -178,15 +218,49 @@ async function generatePDF(student, db) {
     const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     // Decorative Header Block
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16) / 255, g: parseInt(result[2], 16) / 255, b: parseInt(result[3], 16) / 255 } : { r: 0.08, g: 0.18, b: 0.36 };
+    };
+    const theme = hexToRgb(db.settings.themeColor);
+
     page.drawRectangle({
         x: 0,
         y: height - 100,
         width: width,
         height: 100,
-        color: rgb(0.08, 0.18, 0.36),
+        color: rgb(theme.r, theme.g, theme.b),
     });
 
-    page.drawText('EXCEL ACADEMY', {
+    if (db.settings.logoPath && fs.existsSync(db.settings.logoPath)) {
+        try {
+            const logoBytes = fs.readFileSync(db.settings.logoPath);
+            let logoImage;
+            
+            // Check magic bytes to determine if PNG or JPEG
+            const isPng = logoBytes[0] === 0x89 && logoBytes[1] === 0x50 && logoBytes[2] === 0x4E && logoBytes[3] === 0x47;
+            
+            if (isPng) {
+                logoImage = await pdfDoc.embedPng(logoBytes);
+            } else {
+                // Fallback to JPEG
+                logoImage = await pdfDoc.embedJpg(logoBytes);
+            }
+            
+            const targetHeight = 60;
+            const scaleFactor = targetHeight / logoImage.height;
+            page.drawImage(logoImage, {
+                x: width - 40 - (logoImage.width * scaleFactor),
+                y: height - 80,
+                width: logoImage.width * scaleFactor,
+                height: targetHeight,
+            });
+        } catch (e) {
+            console.error("Failed to embed logo:", e);
+        }
+    }
+
+    page.drawText(db.settings.schoolName, {
         x: 40,
         y: height - 50,
         size: 24,
@@ -194,7 +268,7 @@ async function generatePDF(student, db) {
         color: rgb(1, 1, 1),
     });
 
-    page.drawText('Official Student Progress Report Card', {
+    page.drawText(db.settings.subtitle, {
         x: 40,
         y: height - 75,
         size: 12,
@@ -213,10 +287,9 @@ async function generatePDF(student, db) {
     page.drawLine({ start: { x: 40, y: tableTop }, end: { x: 550, y: tableTop }, thickness: 1.5, color: rgb(0.1, 0.1, 0.1) });
     
     page.drawText('Subject', { x: 50, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Score (%)', { x: 180, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Grade', { x: 280, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Points', { x: 380, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Remark', { x: 470, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Score (%)', { x: 200, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Points', { x: 330, y: tableTop - 20, size: 10, font: fontBold });
+    page.drawText('Remark', { x: 450, y: tableTop - 20, size: 10, font: fontBold });
     
     page.drawLine({ start: { x: 40, y: tableTop - 30 }, end: { x: 550, y: tableTop - 30 }, thickness: 1, color: rgb(0.3, 0.3, 0.3) });
 
@@ -229,10 +302,9 @@ async function generatePDF(student, db) {
             const gradeInfo = hasScore ? getGrade(score) : { grade: '-', points: '-', remark: 'Absent/No Score' };
 
             page.drawText(sub, { x: 50, y: currentY, size: 10, font: fontRegular });
-            page.drawText(hasScore ? `${score}%` : '-', { x: 180, y: currentY, size: 10, font: fontRegular });
-            page.drawText(gradeInfo.grade, { x: 280, y: currentY, size: 10, font: fontRegular });
-            page.drawText(String(gradeInfo.points), { x: 380, y: currentY, size: 10, font: fontRegular });
-            page.drawText(gradeInfo.remark, { x: 470, y: currentY, size: 10, font: fontRegular });
+            page.drawText(hasScore ? `${score}%` : '-', { x: 200, y: currentY, size: 10, font: fontRegular });
+            page.drawText(String(gradeInfo.points), { x: 330, y: currentY, size: 10, font: fontRegular });
+            page.drawText(gradeInfo.remark, { x: 450, y: currentY, size: 10, font: fontRegular });
 
             // Light separation line
             page.drawLine({ start: { x: 40, y: currentY - 8 }, end: { x: 550, y: currentY - 8 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
@@ -265,6 +337,50 @@ app.post('/api/generate-pdf/:id', async (req, res) => {
         }
     } else {
         res.status(404).json({ error: "Student not found" });
+    }
+});
+
+app.get('/api/preview-pdf/dummy', async (req, res) => {
+    const db = readDb();
+    const dummyStudent = {
+        name: "John Doe (Preview)",
+        phone: "N/A",
+        rank: 1,
+        mscePoints: 6,
+        totalMarks: 580,
+        subjectsCount: 6,
+        subjects: { "ENG": true, "MATH": true, "BIO": true, "CHEM": true, "PHY": true, "AGR": true },
+        marks: { "ENG": 95, "MATH": 98, "BIO": 92, "CHEM": 99, "PHY": 96, "AGR": 100 }
+    };
+    
+    try {
+        const pdfBytes = await generatePDF(dummyStudent, db);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Content-Disposition', 'inline; filename="preview.pdf"');
+        res.send(Buffer.from(pdfBytes));
+    } catch (e) {
+        res.status(500).send("Error generating preview: " + e.message);
+    }
+});
+
+app.get('/api/preview-pdf/:id', async (req, res) => {
+    const db = readDb();
+    const ranked = calculateRankings(db);
+    const student = ranked.find(s => s.id === req.params.id);
+    
+    if (student) {
+        try {
+            const pdfBytes = await generatePDF(student, db);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+            res.setHeader('Content-Disposition', `inline; filename="${student.name.replace(/\s+/g, '_')}_preview.pdf"`);
+            res.send(Buffer.from(pdfBytes));
+        } catch (e) {
+            res.status(500).send("Error generating preview: " + e.message);
+        }
+    } else {
+        res.status(404).send("Student not found");
     }
 });
 
