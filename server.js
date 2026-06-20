@@ -102,92 +102,54 @@ if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2));
 }
 
-function readDb() {
-    const db = dbCache;
+function readDb(schoolId = 'default') {
+    if (!dbCache.schools) {
+        dbCache.schools = {
+            'default': {
+                students: dbCache.students || [],
+                settings: dbCache.settings || {},
+                subjects: dbCache.subjects || []
+            }
+        };
+        dbCache.users = dbCache.users || [];
+        dbCache.users.forEach(u => { if(!u.schoolId) u.schoolId = 'default'; });
+        delete dbCache.students;
+        delete dbCache.settings;
+        delete dbCache.subjects;
+    }
     
-    if (!db.settings) {
-        db.settings = {
-            schoolName: "EXCEL ACADEMY",
-            subtitle: "Official Student Progress Report Card",
-            themeColor: "#142e5c",
-            logoPath: null
+    if (!dbCache.schools[schoolId]) {
+        dbCache.schools[schoolId] = {
+            students: [],
+            settings: JSON.parse(JSON.stringify(dbCache.schools['default'].settings)),
+            subjects: [...dbCache.schools['default'].subjects]
         };
     }
-    if (!db.settings.gradingSystem) {
-        db.settings.gradingSystem = [
-            { min: 80, points: 1, remark: "Distinction" },
-            { min: 75, points: 2, remark: "Distinction" },
-            { min: 70, points: 3, remark: "Credit" },
-            { min: 65, points: 4, remark: "Credit" },
-            { min: 60, points: 5, remark: "Credit" },
-            { min: 50, points: 6, remark: "Credit" },
-            { min: 45, points: 7, remark: "Pass" },
-            { min: 40, points: 8, remark: "Pass" },
-            { min: 0, points: 9, remark: "Fail" }
-        ];
-    }
-    if (!db.settings.gradingSystemJunior) {
-        db.settings.gradingSystemJunior = [
-            { min: 75, gradeLetter: "A", remark: "Distinction" },
-            { min: 60, gradeLetter: "B", remark: "Credit" },
-            { min: 45, gradeLetter: "C", remark: "Pass" },
-            { min: 30, gradeLetter: "D", remark: "Pass" },
-            { min: 0, gradeLetter: "F", remark: "Fail" }
-        ];
-    }
-    if (!db.users) {
-        db.users = [{
-            id: 'admin_1',
-            username: 'admin',
-            name: 'System Admin',
-            passwordHash: bcrypt.hashSync('password', 8),
-            role: 'admin',
-            subjects: []
-        }];
-    }
     
-    // Default new fields if missing
-    if (db.settings.headteacherRemarksPass === undefined) db.settings.headteacherRemarksPass = "Promoted to next class. Well done!";
-    if (db.settings.headteacherRemarksFail === undefined) db.settings.headteacherRemarksFail = "Failed. Work harder next term.";
-    if (db.settings.nextTermFees === undefined) db.settings.nextTermFees = "MK 50,000";
-    if (db.settings.nextTermDate === undefined) db.settings.nextTermDate = "10 September 2026";
-    if (db.settings.currentTerm === undefined) db.settings.currentTerm = "Term One";
-    if (db.settings.headerContactLabel === undefined) db.settings.headerContactLabel = "School Phone";
-    if (db.settings.headerContactNumber === undefined) db.settings.headerContactNumber = "0999000000";
+    const schoolData = dbCache.schools[schoolId];
     
-    if (!db.settings.masterSubjects) {
-        db.settings.masterSubjects = [
-            { name: "Additional Mathematics", abbr: "ADD", active: true },
-            { name: "Agriculture", abbr: "AGR", active: true },
-            { name: "Biology", abbr: "BIO", active: true },
-            { name: "Bible Knowledge", abbr: "BK", active: true },
-            { name: "Business Studies", abbr: "BUS", active: true },
-            { name: "Computer Studies", abbr: "Comp", active: true },
-            { name: "Chemistry", abbr: "CHEM", active: true },
-            { name: "Chichewa", abbr: "CHIC", active: true },
-            { name: "Clothing & Textiles", abbr: "C&T", active: true },
-            { name: "Creative Arts", abbr: "ART", active: true },
-            { name: "Geography", abbr: "GEO", active: true },
-            { name: "French", abbr: "FRE", active: true },
-            { name: "English", abbr: "ENG", active: true },
-            { name: "History", abbr: "HIST", active: true },
-            { name: "Home Economics", abbr: "HEC", active: true },
-            { name: "Life Skills", abbr: "LIFE", active: true },
-            { name: "Mathematics", abbr: "MATH", active: true },
-            { name: "Metal Work", abbr: "MET", active: true },
-            { name: "Physics", abbr: "PHY", active: true },
-            { name: "Religious & Moral Education", abbr: "RME", active: true },
-            { name: "Social Studies", abbr: "SOS", active: true },
-            { name: "Technical Drawing", abbr: "TD", active: true },
-            { name: "Woodwork", abbr: "WOOD", active: true }
-        ];
+    // Default settings per school if missing
+    if (schoolData.settings.headteacherRemarksPass === undefined) schoolData.settings.headteacherRemarksPass = "Promoted to next class. Well done!";
+    if (schoolData.settings.headteacherRemarksFail === undefined) schoolData.settings.headteacherRemarksFail = "Failed. Work harder next term.";
+    if (schoolData.settings.nextTermFees === undefined) schoolData.settings.nextTermFees = "MK 50,000";
+    if (schoolData.settings.nextTermDate === undefined) schoolData.settings.nextTermDate = "10 September 2026";
+    if (schoolData.settings.currentTerm === undefined) schoolData.settings.currentTerm = "Term One";
+    if (!schoolData.settings.gradingSystem) {
+        schoolData.settings.gradingSystem = dbCache.schools['default'].settings.gradingSystem || [];
     }
+    if (!schoolData.settings.gradingSystemJunior) {
+        schoolData.settings.gradingSystemJunior = dbCache.schools['default'].settings.gradingSystemJunior || [];
+    }
+    if (!schoolData.settings.masterSubjects) {
+        schoolData.settings.masterSubjects = dbCache.schools['default'].settings.masterSubjects || [];
+    }
+    schoolData.subjects = schoolData.settings.masterSubjects.filter(s => s.active).map(s => s.name);
     
-    // Always sync db.subjects with masterSubjects
-    db.subjects = db.settings.masterSubjects.filter(s => s.active).map(s => s.name);
+    // Inject users into the returned object for compatibility, filtering by schoolId
+    schoolData.users = dbCache.users.filter(u => u.schoolId === schoolId || u.role === 'superadmin');
+    schoolData.allUsers = dbCache.users; // global reference
     
-    writeDb(db);
-    return db;
+    return schoolData;
 }
 
 function writeDb(db) {
@@ -291,13 +253,14 @@ function rankStudents(db) {
 // API Routes
 
 app.post('/api/login', (req, res) => {
-    const db = readDb();
+    // Force readDb to initialize structure
+    readDb('default');
     const { username, password } = req.body;
-    const user = db.users.find(u => u.username === username);
+    const user = dbCache.users.find(u => u.username === username);
     if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
         return res.status(401).json({ error: "Invalid credentials" });
     }
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name } });
 });
 
@@ -329,7 +292,7 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     if (req.body.schoolName) db.settings.schoolName = req.body.schoolName;
     if (req.body.subtitle) db.settings.subtitle = req.body.subtitle;
     if (req.body.themeColor) db.settings.themeColor = req.body.themeColor;
@@ -371,18 +334,18 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
         db.settings.logoPath = req.file.path;
     }
     
-    writeDb(db);
+    writeDb();
     res.json({ success: true, settings: db.settings });
 });
 
 app.get('/api/users', requireAdmin, (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     const safeUsers = db.users.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects, password: u.password }));
     res.json(safeUsers);
 });
 
 app.post('/api/users', requireAdmin, (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     const { id, username, name, password, role, subjects } = req.body;
     
     if (id) {
@@ -401,7 +364,7 @@ app.post('/api/users', requireAdmin, (req, res) => {
         if (db.users.find(u => u.username === username)) {
             return res.status(400).json({ error: "Username already exists" });
         }
-        db.users.push({
+        dbCache.users.push({ schoolId: req.user ? req.user.schoolId : 'default',
             id: 'teacher_' + Date.now(),
             username,
             name,
@@ -411,22 +374,22 @@ app.post('/api/users', requireAdmin, (req, res) => {
             subjects: subjects || []
         });
     }
-    writeDb(db);
+    writeDb();
     res.json({ success: true });
 });
 
 app.delete('/api/users/:id', requireAdmin, (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     if (req.params.id === 'admin_1' || req.params.id === req.user.id) {
         return res.status(400).json({ error: "Cannot delete master admin or yourself." });
     }
-    db.users = db.users.filter(u => u.id !== req.params.id);
-    writeDb(db);
+    dbCache.users = dbCache.users.filter(u => u.id !== req.params.id);
+    writeDb();
     res.json({ success: true });
 });
 
 app.get('/api/students', (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     let ranked = db.students;
     if (req.user.role !== 'admin') {
@@ -437,7 +400,7 @@ app.get('/api/students', (req, res) => {
 });
 
 app.post('/api/students', requireAdmin, (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     
     // Bulk update from table
     if (req.body.updates) {
@@ -466,19 +429,19 @@ app.post('/api/students', requireAdmin, (req, res) => {
             marks: {}
         });
     }
-    writeDb(db);
+    writeDb();
     res.json({ success: true });
 });
 
 app.delete('/api/students/:id', requireAdmin, (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     db.students = db.students.filter(s => s.id !== req.params.id);
-    writeDb(db);
+    writeDb();
     res.json({ success: true });
 });
 
 app.post('/api/marks', (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     const { id, marks } = req.body;
     
     if (req.user.role !== 'admin') {
@@ -497,7 +460,7 @@ app.post('/api/marks', (req, res) => {
                 db.students[idx].marks[sub] = marks[sub] !== '' ? Number(marks[sub]) : null;
             }
         });
-        writeDb(db);
+        writeDb();
         res.json({ success: true });
     } else {
         res.status(404).json({ error: "Student not found" });
@@ -722,7 +685,7 @@ async function generatePDF(student, db) {
 }
 
 app.post('/api/generate-pdf/:id', async (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     const ranked = db.students;
     const student = ranked.find(s => s.id === req.params.id);
@@ -747,7 +710,7 @@ app.post('/api/generate-pdf-bulk', async (req, res) => {
         return res.status(400).json({ error: "No student IDs provided" });
     }
 
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     
     try {
@@ -774,7 +737,7 @@ app.post('/api/generate-pdf-bulk', async (req, res) => {
 });
 
 app.get('/api/preview-pdf/dummy', async (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     const dummyStudent = {
         name: "John Doe (Preview)",
         phone: "N/A",
@@ -798,7 +761,7 @@ app.get('/api/preview-pdf/dummy', async (req, res) => {
 });
 
 app.get('/api/preview-pdf/:id', async (req, res) => {
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     const ranked = db.students;
     const student = ranked.find(s => s.id === req.params.id);
@@ -944,7 +907,7 @@ app.get('/api/whatsapp/status', (req, res) => {
 
 app.post('/api/whatsapp/send', async (req, res) => {
     const { studentId } = req.body;
-    const db = readDb();
+    const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     const ranked = db.students;
     const student = ranked.find(s => s.id === studentId);
