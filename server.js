@@ -7,6 +7,10 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLat
 const pino = require('pino');
 const QRCode = require('qrcode');
 const multer = require('multer');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = 'super-secret-excel-academy-key-change-me';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,6 +62,16 @@ function readDb() {
             { min: 40, grade: "P8", points: 8, remark: "Pass" },
             { min: 0, grade: "F9", points: 9, remark: "Fail" }
         ];
+    }
+    if (!db.users) {
+        db.users = [{
+            id: 'admin_1',
+            username: 'admin',
+            name: 'System Admin',
+            passwordHash: bcrypt.hashSync('password', 8),
+            role: 'admin',
+            subjects: []
+        }];
     }
     writeDb(db);
     return db;
@@ -133,11 +147,45 @@ function calculateRankings(db) {
 }
 
 // API Routes
+
+app.post('/api/login', (req, res) => {
+    const db = readDb();
+    const { username, password } = req.body;
+    const user = db.users.find(u => u.username === username);
+    if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
+        return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name } });
+});
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Access denied" });
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: "Invalid token" });
+        req.user = user;
+        next();
+    });
+}
+
+function requireAdmin(req, res, next) {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    next();
+}
+
+app.use('/api', authenticateToken);
+
+app.get('/api/me', (req, res) => {
+    res.json({ user: req.user });
+});
+
 app.get('/api/settings', (req, res) => {
     res.json(readDb().settings);
 });
 
-app.post('/api/settings', upload.single('logo'), (req, res) => {
+app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     const db = readDb();
     if (req.body.schoolName) db.settings.schoolName = req.body.schoolName;
     if (req.body.subtitle) db.settings.subtitle = req.body.subtitle;
@@ -161,11 +209,15 @@ app.post('/api/settings', upload.single('logo'), (req, res) => {
 
 app.get('/api/students', (req, res) => {
     const db = readDb();
-    const ranked = calculateRankings(db);
+    let ranked = calculateRankings(db);
+    if (req.user.role !== 'admin') {
+        const teacherSubjects = req.user.subjects || [];
+        ranked = ranked.filter(s => teacherSubjects.some(sub => s.subjects[sub]));
+    }
     res.json(ranked);
 });
 
-app.post('/api/students', (req, res) => {
+app.post('/api/students', requireAdmin, (req, res) => {
     const db = readDb();
     const { id, name, phone, subjects } = req.body;
     
@@ -201,7 +253,7 @@ app.post('/api/students', (req, res) => {
     res.json({ success: true });
 });
 
-app.delete('/api/students/:id', (req, res) => {
+app.delete('/api/students/:id', requireAdmin, (req, res) => {
     const db = readDb();
     db.students = db.students.filter(s => s.id !== req.params.id);
     writeDb(db);
@@ -211,6 +263,16 @@ app.delete('/api/students/:id', (req, res) => {
 app.post('/api/marks', (req, res) => {
     const db = readDb();
     const { id, marks } = req.body;
+    
+    if (req.user.role !== 'admin') {
+        const teacherSubjects = req.user.subjects || [];
+        for (let sub of Object.keys(marks)) {
+            if (marks[sub] !== undefined && marks[sub] !== '' && !teacherSubjects.includes(sub)) {
+                return res.status(403).json({ error: "Unauthorized to edit subject: " + sub });
+            }
+        }
+    }
+    
     const idx = db.students.findIndex(s => s.id === id);
     if (idx !== -1) {
         db.subjects.forEach(sub => {

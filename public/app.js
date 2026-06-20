@@ -1,6 +1,80 @@
 let students = [];
 const subjectsList = ["AGR", "BK", "BIO", "CHEM", "CHICH", "COMP", "ENG", "GEO", "HIST", "PHY", "MATH", "SOS"];
 
+let authToken = localStorage.getItem('token');
+let currentUser = JSON.parse(localStorage.getItem('user') || 'null');
+
+async function apiFetch(url, options = {}) {
+    if (!options.headers) options.headers = {};
+    if (authToken) options.headers['Authorization'] = `Bearer ${authToken}`;
+    const response = await fetch(url, options);
+    if (response.status === 401 || response.status === 403) {
+        handleLogout();
+        throw new Error("Unauthorized");
+    }
+    return response;
+}
+
+function handleLogout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    authToken = null;
+    currentUser = null;
+    document.getElementById('login-overlay').style.display = 'flex';
+    document.getElementById('main-app').style.display = 'none';
+}
+
+function checkLogin() {
+    if (authToken && currentUser) {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('main-app').style.display = 'flex';
+        document.getElementById('user-greeting').innerText = `Welcome, ${currentUser.name}`;
+        
+        if (currentUser.role === 'teacher') {
+            document.querySelector('[data-tab="students-tab"]').style.display = 'none';
+            document.querySelector('[data-tab="rankings-tab"]').style.display = 'none';
+            document.querySelector('[data-tab="whatsapp-tab"]').style.display = 'none';
+            document.querySelector('[data-tab="settings-tab"]').style.display = 'none';
+            
+            document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
+            document.querySelector('[data-tab="marks-tab"]').classList.add('active');
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('marks-tab').classList.add('active');
+            renderMarksTab();
+        } else {
+            document.querySelectorAll('.nav-links li').forEach(li => li.style.display = 'block');
+            renderStudentsTab();
+        }
+    } else {
+        handleLogout();
+    }
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const u = document.getElementById('login-username').value;
+    const p = document.getElementById('login-password').value;
+    const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: u, password: p})
+    });
+    if (res.ok) {
+        const data = await res.json();
+        authToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem('token', authToken);
+        localStorage.setItem('user', JSON.stringify(currentUser));
+        document.getElementById('login-error').style.display = 'none';
+        checkLogin();
+    } else {
+        document.getElementById('login-error').innerText = "Invalid credentials";
+        document.getElementById('login-error').style.display = 'block';
+    }
+});
+
+document.getElementById('logout-btn').addEventListener('click', handleLogout);
+
 // Handle Tabs Routing
 document.querySelectorAll('.nav-links li').forEach(item => {
     item.addEventListener('click', () => {
@@ -20,7 +94,7 @@ document.querySelectorAll('.nav-links li').forEach(item => {
 });
 
 async function fetchStudents() {
-    const res = await fetch('/api/students');
+    const res = await apiFetch('/api/students');
     students = await res.json();
 }
 
@@ -55,7 +129,7 @@ document.getElementById('save-subjects-btn').addEventListener('click', async () 
 
     for (const studentId of Object.keys(updates)) {
         const student = students.find(s => s.id === studentId);
-        await fetch('/api/students', {
+        await apiFetch('/api/students', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -76,7 +150,7 @@ document.getElementById('add-student-form').addEventListener('submit', async (e)
     const name = document.getElementById('student-name').value;
     const phone = document.getElementById('student-phone').value;
     
-    const res = await fetch('/api/students', {
+    const res = await apiFetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, phone, subjects: {} })
@@ -144,7 +218,7 @@ async function renderMarksTab() {
                 }
             });
 
-            const res = await fetch('/api/marks', {
+            const res = await apiFetch('/api/marks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: studentId, marks })
@@ -183,7 +257,7 @@ async function renderRankingsTab() {
         btn.addEventListener('click', async () => {
             const studentId = btn.getAttribute('data-student-id');
             btn.innerText = 'Creating...';
-            const res = await fetch(`/api/generate-pdf/${studentId}`, { method: 'POST' });
+            const res = await apiFetch(`/api/generate-pdf/${studentId}`, { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
                 btn.innerText = 'Report Generated!';
@@ -206,7 +280,7 @@ async function renderRankingsTab() {
         btn.addEventListener('click', async () => {
             const studentId = btn.getAttribute('data-student-id');
             btn.innerText = 'Sending...';
-            const res = await fetch('/api/whatsapp/send', {
+            const res = await apiFetch('/api/whatsapp/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ studentId })
@@ -229,7 +303,7 @@ function setupWhatsAppStatusPolling() {
     if (statusInterval) clearInterval(statusInterval);
     
     const checkStatus = async () => {
-        const res = await fetch('/api/whatsapp/status');
+        const res = await apiFetch('/api/whatsapp/status');
         const data = await res.json();
         
         const statusSpan = document.getElementById('whatsapp-status');
@@ -279,7 +353,7 @@ document.getElementById('send-all-btn').addEventListener('click', async () => {
         const s = students[i];
         progressText.innerText = `Sending report for ${s.name} (${i + 1}/${students.length})...`;
         
-        const res = await fetch('/api/whatsapp/send', {
+        const res = await apiFetch('/api/whatsapp/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ studentId: s.id })
@@ -303,7 +377,7 @@ document.getElementById('send-all-btn').addEventListener('click', async () => {
 
 // 5. Settings Tab
 async function loadSettings() {
-    const res = await fetch('/api/settings');
+    const res = await apiFetch('/api/settings');
     const settings = await res.json();
     
     document.getElementById('school-name').value = settings.schoolName || '';
@@ -348,15 +422,17 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     });
     formData.append('gradingSystem', JSON.stringify(rules));
     
-    const res = await fetch('/api/settings', {
-        method: 'POST',
-        body: formData // no Content-Type header so browser sets it automatically with boundary
-    });
-    
-    if (res.ok) {
-        alert('Settings saved successfully! The PDF layout has been updated.');
-        document.getElementById('school-logo').value = ''; // clear file input
-    } else {
+    try {
+        const res = await apiFetch('/api/settings', {
+            method: 'POST',
+            body: formData // no Content-Type header so browser sets it automatically with boundary
+        });
+        
+        if (res.ok) {
+            alert('Settings saved successfully!');
+            document.getElementById('school-logo').value = '';
+        }
+    } catch(e) {
         alert('Error saving settings.');
     }
 });
@@ -366,4 +442,4 @@ document.getElementById('preview-design-btn').addEventListener('click', () => {
 });
 
 // Initial load
-renderStudentsTab();
+checkLogin();

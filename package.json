@@ -8,7 +8,9 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.8",
+    "bcryptjs": "^3.0.3",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pdf-lib": "^1.17.1",
     "pino": "^9.2.0",

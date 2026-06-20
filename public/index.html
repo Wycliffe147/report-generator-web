@@ -8,12 +8,29 @@
     <link rel="stylesheet" href="index.css">
 </head>
 <body>
-    <div class="app-container">
+    <div id="login-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:9999; display:flex; justify-content:center; align-items:center;">
+        <div class="card form-card" style="width: 400px; text-align: center;">
+            <h2>Excel Academy Login</h2>
+            <form id="login-form" style="margin-top: 20px;">
+                <div class="input-group">
+                    <input type="text" id="login-username" placeholder="Username" required style="width: 100%; margin-bottom: 15px;">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="login-password" placeholder="Password" required style="width: 100%; margin-bottom: 20px;">
+                </div>
+                <button type="submit" class="btn primary-btn" style="width: 100%;">Login</button>
+                <p id="login-error" style="color: red; margin-top: 10px; display: none;"></p>
+            </form>
+        </div>
+    </div>
+    <div class="app-container" id="main-app" style="display:none;">
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="logo">
                 <h2>Excel Academy</h2>
-                <span>Report Dashboard</span>
+                <span id="user-greeting">Report Dashboard</span>
+                <br>
+                <button id="logout-btn" class="btn outline-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 5px;">Logout</button>
             </div>
             <ul class="nav-links">
                 <li class="active" data-tab="students-tab">Students</li>
