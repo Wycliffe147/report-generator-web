@@ -326,7 +326,7 @@ async function loadSuperAdmin() {
                 <td>${s.studentCount}</td>
                 <td>${s.adminUsers.join(', ')}</td>
                 <td style="display:flex; gap:6px;">
-                    <button class="btn outline-btn edit-school-btn" data-id="${s.schoolId}" data-name="${s.schoolName}" data-admin="${s.adminUsers[0] || ''}" style="padding: 5px 10px; font-size: 0.8rem; border: 1px solid var(--primary-color); color: var(--primary-color);">Edit</button>
+                    <button class="btn outline-btn edit-school-btn" data-id="${s.schoolId}" data-name="${s.schoolName}" data-admin="${s.adminUsers[0] || ''}" style="padding: 5px 10px; font-size: 0.8rem;">Edit</button>
                     <button class="btn danger-btn delete-school-btn" data-id="${s.schoolId}" style="padding: 5px 10px; font-size: 0.8rem;">Delete</button>
                 </td>
             `;

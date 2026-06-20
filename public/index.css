@@ -243,6 +243,17 @@ td input[type="number"]:disabled {
     background-color: #dc2626;
 }
 
+.outline-btn {
+    background-color: transparent;
+    color: var(--accent-blue);
+    border: 2px solid var(--accent-blue) !important;
+}
+
+.outline-btn:hover {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
 .float-right {
     float: right;
 }
