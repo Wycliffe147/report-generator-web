@@ -29,7 +29,14 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 if (!fs.existsSync(DB_FILE)) {
     const initialDb = {
         students: [],
-        subjects: ["AGR", "BK", "BIO", "CHEM", "CHICH", "COMP", "ENG", "GEO", "HIST", "PHY", "MATH", "SOS"],
+        subjects: [
+            "Additional Mathematics", "Agriculture", "Biology", "Bible Knowledge", 
+            "Business Studies", "Computer Studies", "Chemistry", "Chichewa", 
+            "Clothing & Textiles", "Creative Arts", "Geography", "French", 
+            "English", "History", "Home Economics", "Life Skills", 
+            "Mathematics", "Metal Work", "Physics", "Religious & Moral Education", 
+            "Social Studies", "Technical Drawing", "Woodwork"
+        ],
         settings: {
             schoolName: "EXCEL ACADEMY",
             subtitle: "Official Student Progress Report Card",
@@ -42,6 +49,17 @@ if (!fs.existsSync(DB_FILE)) {
 
 function readDb() {
     const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    
+    // Always enforce the comprehensive subject list
+    db.subjects = [
+        "Additional Mathematics", "Agriculture", "Biology", "Bible Knowledge", 
+        "Business Studies", "Computer Studies", "Chemistry", "Chichewa", 
+        "Clothing & Textiles", "Creative Arts", "Geography", "French", 
+        "English", "History", "Home Economics", "Life Skills", 
+        "Mathematics", "Metal Work", "Physics", "Religious & Moral Education", 
+        "Social Studies", "Technical Drawing", "Woodwork"
+    ];
+
     if (!db.settings) {
         db.settings = {
             schoolName: "EXCEL ACADEMY",
@@ -487,7 +505,7 @@ async function generatePDF(student, db) {
                 const gradeInfo = getGrade(score, db);
                 if (gradeInfo.points !== '-' && Number(gradeInfo.points) < 9) {
                     passedSubjectsCount++;
-                    if (sub === 'ENG') englishPassed = true;
+                    if (sub === 'ENG' || sub === 'English') englishPassed = true;
                 }
             }
         }

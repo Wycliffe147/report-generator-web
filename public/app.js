@@ -1,5 +1,26 @@
 let students = [];
-const subjectsList = ["AGR", "BK", "BIO", "CHEM", "CHICH", "COMP", "ENG", "GEO", "HIST", "PHY", "MATH", "SOS"];
+const subjectsList = [
+    "Additional Mathematics", "Agriculture", "Biology", "Bible Knowledge", 
+    "Business Studies", "Computer Studies", "Chemistry", "Chichewa", 
+    "Clothing & Textiles", "Creative Arts", "Geography", "French", 
+    "English", "History", "Home Economics", "Life Skills", 
+    "Mathematics", "Metal Work", "Physics", "Religious & Moral Education", 
+    "Social Studies", "Technical Drawing", "Woodwork"
+];
+
+function getAbbreviation(sub) {
+    const map = {
+        'Additional Mathematics': 'ADD', 'Agriculture': 'AGR', 'Biology': 'BIO', 
+        'Bible Knowledge': 'BK', 'Business Studies': 'BUS', 'Computer Studies': 'Comp', 
+        'Chemistry': 'CHEM', 'Chichewa': 'CHIC', 'Clothing & Textiles': 'C&T', 
+        'Creative Arts': 'ART', 'Geography': 'GEO', 'French': 'FRE', 
+        'English': 'ENG', 'History': 'HIST', 'Home Economics': 'HEC', 
+        'Life Skills': 'LIFE', 'Mathematics': 'MATH', 'Metal Work': 'MET', 
+        'Physics': 'PHY', 'Religious & Moral Education': 'RME', 
+        'Social Studies': 'SOS', 'Technical Drawing': 'TD', 'Woodwork': 'WOOD'
+    };
+    return map[sub] || sub.substring(0,3).toUpperCase();
+}
 
 let authToken = localStorage.getItem('token');
 let currentUser = JSON.parse(localStorage.getItem('user') || 'null');
@@ -104,6 +125,14 @@ async function fetchStudents() {
 // 1. Render Students Tab
 async function renderStudentsTab() {
     await fetchStudents();
+    
+    // Render dynamic table headers
+    const thead = document.getElementById('subjects-table-header');
+    if (thead) {
+        thead.innerHTML = `<th>Student</th><th>Phone</th><th>Bursary</th>` + 
+            subjectsList.map(sub => `<th title="${sub}" style="font-size: 10px; writing-mode: vertical-rl; transform: rotate(180deg);">${getAbbreviation(sub)}</th>`).join('');
+    }
+
     const tbody = document.querySelector('#subjects-table tbody');
     tbody.innerHTML = '';
     
