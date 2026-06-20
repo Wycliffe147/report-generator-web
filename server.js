@@ -446,12 +446,18 @@ async function generatePDF(student, db) {
     
     page.drawLine({ start: { x: 40, y: tableTop - 30 }, end: { x: 550, y: tableTop - 30 }, thickness: 1, color: rgb(0.3, 0.3, 0.3) });
 
-    // Table Body
     let currentY = tableTop - 50;
-    db.subjects.forEach((sub) => {
+    const graphData = [];
+    
+    db.subjects.forEach(sub => {
         if (student.subjects[sub]) {
             const score = student.marks[sub];
             const hasScore = score !== null && score !== undefined && score !== '';
+            
+            if (hasScore) {
+                graphData.push({ subject: sub, score: Number(score) });
+            }
+            
             const gradeInfo = hasScore ? getGrade(score, db) : { points: '-', remark: 'Absent/No Score' };
 
             const teachersForSub = db.users
@@ -490,8 +496,55 @@ async function generatePDF(student, db) {
     const hasPassed = englishPassed && passedSubjectsCount >= 6;
     const finalRemarks = hasPassed ? db.settings.headteacherRemarksPass : db.settings.headteacherRemarksFail;
 
+    // --- Bar Graph ---
+    if (graphData.length > 0) {
+        currentY -= 30; // Space before graph
+        const chartHeight = 80;
+        const chartWidth = 450;
+        const chartY = currentY - chartHeight;
+        
+        // Draw axes
+        page.drawLine({ start: { x: 50, y: chartY }, end: { x: 520, y: chartY }, thickness: 1, color: rgb(0,0,0) }); // X axis
+        page.drawLine({ start: { x: 50, y: chartY }, end: { x: 50, y: chartY + chartHeight }, thickness: 1, color: rgb(0,0,0) }); // Y axis
+        
+        // Y-axis labels
+        page.drawText('100', { x: 30, y: chartY + chartHeight - 3, size: 8, font: fontRegular });
+        page.drawText('50', { x: 35, y: chartY + (chartHeight/2) - 3, size: 8, font: fontRegular });
+        page.drawText('0', { x: 40, y: chartY - 3, size: 8, font: fontRegular });
+
+        // Draw horizontal grid lines
+        page.drawLine({ start: { x: 50, y: chartY + (chartHeight/2) }, end: { x: 520, y: chartY + (chartHeight/2) }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+        page.drawLine({ start: { x: 50, y: chartY + chartHeight }, end: { x: 520, y: chartY + chartHeight }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+
+        // Draw bars
+        const spacing = chartWidth / graphData.length;
+        const barWidth = Math.min(30, spacing - 10);
+
+        graphData.forEach((data, index) => {
+            const barHeight = (data.score / 100) * chartHeight;
+            const x = 50 + (index * spacing) + (spacing / 2) - (barWidth / 2);
+            
+            // Bar
+            page.drawRectangle({
+                x: x,
+                y: chartY + 1,
+                width: barWidth,
+                height: barHeight,
+                color: rgb(0.1, 0.3, 0.6)
+            });
+            
+            // Subject Label (centered under bar)
+            page.drawText(data.subject, { x: x + (barWidth/2) - (data.subject.length * 2.5), y: chartY - 12, size: 8, font: fontRegular });
+            
+            // Score Label (centered above bar)
+            page.drawText(String(data.score), { x: x + (barWidth/2) - 5, y: chartY + barHeight + 3, size: 8, font: fontRegular });
+        });
+
+        currentY = chartY - 30; // Move currentY below the chart
+    }
+
     // Summary Details at Bottom
-    currentY -= 20;
+    currentY -= 10;
     
     page.drawText(`Headteacher's Remarks: ${finalRemarks}`, { x: 40, y: currentY, size: 10, font: fontRegular });
     if (student.bursaryName && student.bursaryName.trim() !== '') {
