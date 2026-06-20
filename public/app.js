@@ -42,11 +42,29 @@ function handleLogout() {
     document.getElementById('main-app').style.display = 'none';
 }
 
+let currentClass = 'Form 1';
+
+function renderActiveTab() {
+    const activeTab = document.querySelector('.nav-links li.active');
+    if (!activeTab) return;
+    const tabId = activeTab.getAttribute('data-tab');
+    if (tabId === 'students-tab') renderStudentsTab();
+    if (tabId === 'staff-tab') renderStaffTab();
+    if (tabId === 'marks-tab') renderMarksTab();
+    if (tabId === 'rankings-tab') renderRankingsTab();
+}
+
+document.getElementById('global-class-select').addEventListener('change', (e) => {
+    currentClass = e.target.value;
+    renderActiveTab();
+});
+
 async function checkLogin() {
     if (authToken && currentUser) {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         document.getElementById('user-greeting').innerText = `Welcome, ${currentUser.name}`;
+        document.getElementById('class-selector-container').style.display = 'flex';
         
         await loadGlobals();
         
@@ -135,7 +153,9 @@ async function renderStudentsTab() {
     const tbody = document.querySelector('#subjects-table tbody');
     tbody.innerHTML = '';
     
-    students.forEach(student => {
+    const classStudents = students.filter(s => (s.classLevel || 'Form 1') === currentClass);
+    
+    classStudents.forEach(student => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><input type="text" data-student-id="${student.id}" data-field="name" value="${student.name}" style="width: 120px;"></td>
@@ -200,7 +220,7 @@ document.getElementById('add-student-form').addEventListener('submit', async (e)
     const res = await apiFetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, bursaryName, subjects: {} })
+        body: JSON.stringify({ name, phone, bursaryName, classLevel: currentClass, subjects: {} })
     });
     
     if (res.ok) {
@@ -250,10 +270,12 @@ async function renderStaffTab() {
     
     users.forEach(u => {
         const tr = document.createElement('tr');
+        const classSubs = (u.subjects || []).filter(s => s.startsWith(currentClass + ':')).map(s => s.split(':')[1]);
+        
         tr.innerHTML = `
             <td>${u.name}</td>
             <td>${u.username}</td>
-            <td>${u.role === 'admin' ? 'ALL' : u.subjects.join(', ') || 'None'}</td>
+            <td>${u.role === 'admin' ? 'ALL' : classSubs.join(', ') || 'None'}</td>
             <td>${u.role}</td>
             <td>
                 <button class="btn outline-btn edit-staff-btn" data-id="${u.id}" style="padding: 5px;">Edit</button>
@@ -268,7 +290,7 @@ async function renderStaffTab() {
             document.getElementById('staff-password').placeholder = "(Leave blank to keep current)";
             
             document.querySelectorAll('.staff-sub-cb').forEach(cb => {
-                cb.checked = u.subjects.includes(cb.value);
+                cb.checked = classSubs.includes(cb.value);
             });
             document.getElementById('cancel-staff-btn').style.display = 'inline-block';
         });
@@ -295,8 +317,14 @@ document.getElementById('add-staff-form').addEventListener('submit', async (e) =
     const username = document.getElementById('staff-username').value;
     const password = document.getElementById('staff-password').value;
     
-    const subjects = [];
-    document.querySelectorAll('.staff-sub-cb:checked').forEach(cb => subjects.push(cb.value));
+    const existingUser = users.find(u => u.id === id);
+    const existingSubjects = existingUser ? (existingUser.subjects || []) : [];
+    const otherClassSubjects = existingSubjects.filter(s => !s.startsWith(currentClass + ':'));
+    
+    const currentClassSubjects = [];
+    document.querySelectorAll('.staff-sub-cb:checked').forEach(cb => currentClassSubjects.push(`${currentClass}:${cb.value}`));
+    
+    const subjects = [...otherClassSubjects, ...currentClassSubjects];
     
     if (!id && !password) {
         alert("Password is required for new accounts.");
@@ -334,7 +362,9 @@ document.getElementById('cancel-staff-btn').addEventListener('click', () => {
 async function renderMarksTab() {
     await fetchStudents();
     
-    const allowedSubjects = currentUser.role === 'teacher' ? currentUser.subjects : subjectsList;
+    const allowedSubjects = currentUser.role === 'teacher' ? 
+        (currentUser.subjects || []).filter(s => s.startsWith(currentClass + ':')).map(s => s.split(':')[1]) : 
+        subjectsList;
     
     // Generate Headers
     const theadTr = document.getElementById('marks-table-header');
@@ -347,7 +377,9 @@ async function renderMarksTab() {
     const tbody = document.querySelector('#marks-entry-table tbody');
     tbody.innerHTML = '';
     
-    students.forEach(student => {
+    const classStudents = students.filter(s => (s.classLevel || 'Form 1') === currentClass);
+    
+    classStudents.forEach(student => {
         const tr = document.createElement('tr');
         tr.setAttribute('data-id', student.id);
         
@@ -417,7 +449,9 @@ async function renderRankingsTab() {
     const tbody = document.querySelector('#rankings-table tbody');
     tbody.innerHTML = '';
 
-    students.forEach(student => {
+    const classStudents = students.filter(s => (s.classLevel || 'Form 1') === currentClass);
+
+    classStudents.forEach(student => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${student.rank}</strong></td>
@@ -583,6 +617,11 @@ async function loadSettings() {
         settings.gradingSystem.sort((a,b) => b.min - a.min).forEach(rule => addGradingRow(rule));
     }
     
+    document.getElementById('grading-junior-tbody').innerHTML = '';
+    if (settings.gradingSystemJunior) {
+        settings.gradingSystemJunior.sort((a,b) => b.min - a.min).forEach(rule => addJuniorGradingRow(rule));
+    }
+    
     const mtbody = document.getElementById('master-subjects-tbody');
     if (mtbody) {
         mtbody.innerHTML = '';
@@ -619,7 +658,21 @@ function addGradingRow(rule = {min: '', points: '', remark: ''}) {
     tbody.appendChild(tr);
 }
 
+function addJuniorGradingRow(rule = {min: '', gradeLetter: '', remark: ''}) {
+    const tbody = document.getElementById('grading-junior-tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="number" name="jMinMarks[]" value="${rule.min}" required style="width: 80px;"></td>
+        <td><input type="text" name="jGrade[]" value="${rule.gradeLetter}" required style="width: 80px;"></td>
+        <td><input type="text" name="jRemark[]" value="${rule.remark}" required style="width: 150px;"></td>
+        <td><button type="button" class="btn danger-btn remove-grade-btn" style="padding:5px;">Remove</button></td>
+    `;
+    tr.querySelector('.remove-grade-btn').addEventListener('click', () => tr.remove());
+    tbody.appendChild(tr);
+}
+
 document.getElementById('add-grade-rule-btn').addEventListener('click', () => addGradingRow());
+document.getElementById('add-junior-grade-rule-btn').addEventListener('click', () => addJuniorGradingRow());
 
 document.getElementById('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -634,6 +687,16 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
         });
     });
     formData.append('gradingSystem', JSON.stringify(rules));
+    
+    const jRules = [];
+    document.querySelectorAll('#grading-junior-tbody tr').forEach(tr => {
+        jRules.push({
+            min: Number(tr.querySelector('input[name="jMinMarks[]"]').value),
+            gradeLetter: tr.querySelector('input[name="jGrade[]"]').value,
+            remark: tr.querySelector('input[name="jRemark[]"]').value
+        });
+    });
+    formData.append('gradingSystemJunior', JSON.stringify(jRules));
     
     const mSubjects = [];
     document.querySelectorAll('#master-subjects-tbody tr').forEach(tr => {

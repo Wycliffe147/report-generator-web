@@ -71,6 +71,15 @@ function readDb() {
             { min: 0, points: 9, remark: "Fail" }
         ];
     }
+    if (!db.settings.gradingSystemJunior) {
+        db.settings.gradingSystemJunior = [
+            { min: 75, gradeLetter: "A", remark: "Distinction" },
+            { min: 60, gradeLetter: "B", remark: "Credit" },
+            { min: 45, gradeLetter: "C", remark: "Pass" },
+            { min: 30, gradeLetter: "D", remark: "Pass" },
+            { min: 0, gradeLetter: "F", remark: "Fail" }
+        ];
+    }
     if (!db.users) {
         db.users = [{
             id: 'admin_1',
@@ -131,68 +140,87 @@ function writeDb(data) {
 }
 
 // Calculate Grades
-function getGrade(scoreStr, db) {
-    if (scoreStr === '' || scoreStr === null || scoreStr === undefined) return { points: 9, remark: 'No Grade' };
-    const score = Number(scoreStr);
-    const rules = [...(db.settings.gradingSystem || [])].sort((a, b) => b.min - a.min);
-    for (const rule of rules) {
-        if (score >= rule.min) return { points: rule.points, remark: rule.remark };
+function getGrade(scoreStr, db, classLevel) {
+    const isJunior = classLevel === 'Form 1' || classLevel === 'Form 2';
+    
+    if (scoreStr === '' || scoreStr === null || scoreStr === undefined) {
+        return isJunior ? { gradeLetter: '-', remark: 'No Grade', points: '-' } : { points: 9, remark: 'No Grade', gradeLetter: '-' };
     }
-    return { points: 9, remark: "Fail" };
+    
+    const score = Number(scoreStr);
+    
+    if (isJunior) {
+        const rules = [...(db.settings.gradingSystemJunior || [])].sort((a, b) => b.min - a.min);
+        for (const rule of rules) {
+            if (score >= rule.min) return { gradeLetter: rule.gradeLetter, remark: rule.remark, points: '-' };
+        }
+        return { gradeLetter: 'F', remark: "Fail", points: '-' };
+    } else {
+        const rules = [...(db.settings.gradingSystem || [])].sort((a, b) => b.min - a.min);
+        for (const rule of rules) {
+            if (score >= rule.min) return { points: rule.points, remark: rule.remark, gradeLetter: '-' };
+        }
+        return { points: 9, remark: "Fail", gradeLetter: '-' };
+    }
 }
 
 // Calculate Student Rankings
-function calculateRankings(db) {
-    const students = db.students.map(s => {
-        let total = 0;
-        let subjectsCount = 0;
-        let pointsArray = [];
-
-        db.subjects.forEach(sub => {
-            if (s.subjects[sub]) {
-                const score = s.marks[sub];
-                if (score !== null && score !== undefined && score !== '') {
-                    total += Number(score);
-                    subjectsCount++;
-                    pointsArray.push(getGrade(score, db).points);
-                } else {
-                    pointsArray.push(9); // Unentered marks count as F9 (9 pts)
+function rankStudents(db) {
+    const forms = ['Form 1', 'Form 2', 'Form 3', 'Form 4'];
+    
+    forms.forEach(form => {
+        const classStudents = db.students.filter(s => (s.classLevel || 'Form 1') === form);
+        
+        classStudents.forEach(student => {
+            student.mscePoints = 0;
+            student.subjectsCount = 0;
+            let pointsList = [];
+            
+            db.subjects.forEach(sub => {
+                if (student.subjects && student.subjects[sub]) {
+                    student.subjectsCount++;
+                    const score = student.marks && student.marks[sub];
+                    if (score !== null && score !== undefined && score !== '') {
+                        const gradeInfo = getGrade(score, db, student.classLevel || 'Form 1');
+                        if (!['Form 1', 'Form 2'].includes(student.classLevel || 'Form 1')) {
+                            if (gradeInfo.points !== '-') {
+                                pointsList.push(Number(gradeInfo.points));
+                            }
+                        } else {
+                            // Junior grading: for ranking, maybe we count passes?
+                            // For simplicity, juniors might just use total score or we convert grades to points implicitly.
+                            // Let's use total average score for junior rankings to be fair.
+                            pointsList.push(100 - Number(score)); // Reverse so lowest "points" is best, like MSCE!
+                        }
+                    }
                 }
+            });
+            
+            pointsList.sort((a, b) => a - b);
+            const best6 = pointsList.slice(0, 6);
+            student.mscePoints = best6.reduce((acc, val) => acc + val, 0);
+            
+            // For juniors, mscePoints is actually the inverted top 6 scores.
+            // Let's store raw total score for juniors to display properly.
+            if (['Form 1', 'Form 2'].includes(student.classLevel || 'Form 1')) {
+                student.juniorTotalScore = pointsList.reduce((acc, val) => acc + (100 - val), 0); 
             }
         });
-
-        // MSCE aggregate: sum of 6 best subjects
-        pointsArray.sort((a, b) => a - b);
-        const mscePoints = pointsArray.slice(0, 6).reduce((sum, pts) => sum + pts, 0);
-
-        return {
-            ...s,
-            totalMarks: total,
-            subjectsCount,
-            mscePoints: subjectsCount >= 6 ? mscePoints : 'Inc'
-        };
+        
+        // Sort students within the class
+        classStudents.sort((a, b) => {
+            const isJunior = ['Form 1', 'Form 2'].includes(a.classLevel || 'Form 1');
+            if (isJunior) {
+                return (b.juniorTotalScore || 0) - (a.juniorTotalScore || 0); // Highest total score first
+            } else {
+                return a.mscePoints - b.mscePoints; // Lowest points first
+            }
+        });
+        
+        classStudents.forEach((student, index) => {
+            student.rank = index + 1;
+        });
     });
-
-    // Sort by MSCE Points ascending (lower points is better rank), then total marks descending
-    students.sort((a, b) => {
-        if (a.mscePoints === 'Inc' && b.mscePoints !== 'Inc') return 1;
-        if (b.mscePoints === 'Inc' && a.mscePoints !== 'Inc') return -1;
-        if (a.mscePoints !== b.mscePoints) {
-            return a.mscePoints - b.mscePoints;
-        }
-        return b.totalMarks - a.totalMarks;
-    });
-
-    // Assign Rank
-    let rank = 1;
-    for (let i = 0; i < students.length; i++) {
-        if (i > 0 && students[i].mscePoints !== students[i - 1].mscePoints) {
-            rank = i + 1;
-        }
-        students[i].rank = students[i].mscePoints === 'Inc' ? '-' : rank;
-    }
-
-    return students;
 }
 
 // API Routes
@@ -262,7 +290,15 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
         try {
             db.settings.gradingSystem = JSON.parse(req.body.gradingSystem);
         } catch (e) {
-            console.error("Failed to parse grading system", e);
+            console.error("Error parsing gradingSystem", e);
+        }
+    }
+    
+    if (req.body.gradingSystemJunior) {
+        try {
+            db.settings.gradingSystemJunior = JSON.parse(req.body.gradingSystemJunior);
+        } catch (e) {
+            console.error("Error parsing gradingSystemJunior", e);
         }
     }
     
@@ -323,7 +359,8 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
 
 app.get('/api/students', (req, res) => {
     const db = readDb();
-    let ranked = calculateRankings(db);
+    rankStudents(db);
+    let ranked = db.students;
     if (req.user.role !== 'admin') {
         const teacherSubjects = req.user.subjects || [];
         ranked = ranked.filter(s => teacherSubjects.some(sub => s.subjects[sub]));
@@ -336,34 +373,31 @@ app.post('/api/students', requireAdmin, (req, res) => {
     
     // Bulk update from table
     if (req.body.updates) {
-        for (const [id, changes] of Object.entries(req.body.updates)) {
+        Object.keys(req.body.updates).forEach(id => {
             const student = db.students.find(s => s.id === id);
             if (student) {
-                if (changes.name !== undefined) student.name = changes.name;
-                if (changes.phone !== undefined) student.phone = changes.phone;
-                if (changes.bursaryName !== undefined) student.bursaryName = changes.bursaryName;
-                if (changes.subjects) {
-                    student.subjects = { ...student.subjects, ...changes.subjects };
+                if (req.body.updates[id].name !== undefined) student.name = req.body.updates[id].name;
+                if (req.body.updates[id].phone !== undefined) student.phone = req.body.updates[id].phone;
+                if (req.body.updates[id].bursaryName !== undefined) student.bursaryName = req.body.updates[id].bursaryName;
+                
+                if (req.body.updates[id].subjects) {
+                    if (!student.subjects) student.subjects = {};
+                    Object.assign(student.subjects, req.body.updates[id].subjects);
                 }
             }
-        }
-        writeDb(db);
-        return res.json({ success: true });
+        });
+    } else {
+        // Add new student
+        db.students.push({
+            id: Date.now().toString(),
+            name: req.body.name,
+            phone: req.body.phone,
+            bursaryName: req.body.bursaryName,
+            classLevel: req.body.classLevel || 'Form 1',
+            subjects: req.body.subjects || {},
+            marks: {}
+        });
     }
-    
-    // Create new student
-    const newStudent = {
-        id: 'std_' + Date.now(),
-        name: req.body.name,
-        phone: req.body.phone,
-        bursaryName: req.body.bursaryName || '',
-        subjects: req.body.subjects || {},
-        marks: {}
-    };
-    db.subjects.forEach(sub => {
-        newStudent.subjects[sub] = !!newStudent.subjects[sub];
-    });
-    db.students.push(newStudent);
     writeDb(db);
     res.json({ success: true });
 });
@@ -470,23 +504,28 @@ async function generatePDF(student, db) {
         color: rgb(0.8, 0.85, 0.95),
     });
 
+    const isJunior = ['Form 1', 'Form 2'].includes(student.classLevel || 'Form 1');
+    const classTotal = db.students.filter(s => (s.classLevel || 'Form 1') === (student.classLevel || 'Form 1')).length;
+
     // Student Info Block
     page.drawText(`${db.settings.headerContactLabel}: ${db.settings.headerContactNumber}`, { x: 40, y: height - 120, size: 10, font: fontRegular });
     page.drawText(`Student Name: ${student.name}`, { x: 40, y: height - 140, size: 12, font: fontBold });
-    page.drawText(`Term: ${db.settings.currentTerm}`, { x: 40, y: height - 160, size: 10, font: fontBold });
+    page.drawText(`Class: ${student.classLevel || 'Form 1'}`, { x: 40, y: height - 160, size: 10, font: fontBold });
+    page.drawText(`Term: ${db.settings.currentTerm}`, { x: 40, y: height - 180, size: 10, font: fontBold });
     
-    page.drawText(`Position: ${student.rank} of ${db.students.length}`, { x: 380, y: height - 140, size: 12, font: fontBold });
-    page.drawText(`Total Points: ${student.mscePoints} (Best 6 Subjects)`, { x: 380, y: height - 160, size: 10, font: fontRegular });
+    const totalText = isJunior ? `Total Score: ${student.juniorTotalScore}` : `Total Points: ${student.mscePoints} (Best 6 Subjects)`;
+    page.drawText(`Position: ${student.rank} of ${classTotal}`, { x: 380, y: height - 140, size: 12, font: fontBold });
+    page.drawText(totalText, { x: 380, y: height - 160, size: 10, font: fontRegular });
 
     // Table Header
     const columns = [
         { title: 'Subject', x: 40 },
         { title: 'Score (%)', x: 170 },
-        { title: 'Points', x: 250 },
+        { title: isJunior ? 'Grade' : 'Points', x: 250 },
         { title: 'Remark', x: 330 },
         { title: 'Teacher', x: 440 }
     ];
-    const tableTop = height - 200;
+    const tableTop = height - 220;
     page.drawLine({ start: { x: 40, y: tableTop }, end: { x: 550, y: tableTop }, thickness: 1.5, color: rgb(0.1, 0.1, 0.1) });
     
     columns.forEach(col => {
@@ -507,16 +546,17 @@ async function generatePDF(student, db) {
                 graphData.push({ subject: sub, score: Number(score) });
             }
             
-            const gradeInfo = hasScore ? getGrade(score, db) : { points: '-', remark: 'Absent/No Score' };
+            const gradeInfo = hasScore ? getGrade(score, db, student.classLevel || 'Form 1') : { points: '-', remark: 'Absent/No Score', gradeLetter: '-' };
 
+            const teacherSubKey = `${student.classLevel || 'Form 1'}:${sub}`;
             const teachersForSub = db.users
-                .filter(u => u.role === 'teacher' && (u.subjects || []).includes(sub))
+                .filter(u => u.role === 'teacher' && (u.subjects || []).includes(teacherSubKey))
                 .map(u => u.name).join(', ');
             const teacherName = teachersForSub || '-';
 
             page.drawText(sub, { x: columns[0].x, y: currentY, size: 10, font: fontRegular });
             page.drawText(hasScore ? `${score}%` : '-', { x: columns[1].x, y: currentY, size: 10, font: fontRegular });
-            page.drawText(String(gradeInfo.points), { x: columns[2].x, y: currentY, size: 10, font: fontRegular });
+            page.drawText(isJunior ? gradeInfo.gradeLetter : String(gradeInfo.points), { x: columns[2].x, y: currentY, size: 10, font: fontRegular });
             page.drawText(gradeInfo.remark, { x: columns[3].x, y: currentY, size: 10, font: fontRegular });
             page.drawText(teacherName, { x: columns[4].x, y: currentY, size: 9, font: fontRegular });
 
