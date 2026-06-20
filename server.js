@@ -262,13 +262,36 @@ function rankStudents(db) {
 app.post('/api/login', (req, res) => {
     // Force readDb to initialize structure
     readDb('default');
-    const { username, password } = req.body;
-    const user = dbCache.users.find(u => u.username === username);
+    const { username, password, schoolId } = req.body;
+    // Find user by username and schoolId (allow superadmin regardless of schoolId)
+    const user = dbCache.users.find(u => u.username === username && (u.schoolId === schoolId || u.role === 'superadmin'));
     if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
         return res.status(401).json({ error: "Invalid credentials" });
     }
     const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name } });
+});
+
+// Public endpoint to list available schools (no auth required)
+app.get('/api/public/schools', (req, res) => {
+    // Ensure schools structure is initialized
+    readDb('default');
+    const list = Object.keys(dbCache.schools).map(id => ({
+        schoolId: id,
+        schoolName: dbCache.schools[id].settings.schoolName || 'Unnamed School'
+    }));
+    res.json(list);
+});
+
+// Public endpoint to list available schools (no auth required)
+app.get('/api/public/schools', (req, res) => {
+    // Ensure schools structure is initialized
+    readDb('default');
+    const list = Object.keys(dbCache.schools).map(id => ({
+        schoolId: id,
+        schoolName: dbCache.schools[id].settings.schoolName || 'Unnamed School'
+    }));
+    res.json(list);
 });
 
 function authenticateToken(req, res, next) {

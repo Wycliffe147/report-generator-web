@@ -105,7 +105,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const res = await fetch('/api/login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username: u, password: p})
+        body: JSON.stringify({username: u, password: p, schoolId: document.getElementById('login-school').value})
     });
     if (res.ok) {
         const data = await res.json();
@@ -120,6 +120,26 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         document.getElementById('login-error').style.display = 'block';
     }
 });
+// Fetch available schools for login dropdown
+async function loadSchoolOptions() {
+  try {
+    const res = await fetch('/api/public/schools');
+    if (!res.ok) throw new Error('Failed to load schools');
+    const schools = await res.json();
+    const select = document.getElementById('login-school');
+    select.innerHTML = '<option value="" disabled selected>Select your school</option>';
+    schools.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.schoolId;
+      opt.textContent = s.schoolName;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+// Populate schools on page load
+loadSchoolOptions();
 
 document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
