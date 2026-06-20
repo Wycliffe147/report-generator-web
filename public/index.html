@@ -210,10 +210,14 @@
                     <h1>Ranks & Report Cards</h1>
                 </div>
                 <div class="card full-width-card">
+                    <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                        <button id="btn-download-selected" class="btn" style="background-color: var(--secondary-color);">⬇️ Download Selected as ZIP</button>
+                    </div>
                     <div class="table-container">
                         <table id="rankings-table">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;"><input type="checkbox" id="selectAllReports"></th>
                                     <th>Position</th>
                                     <th>Student</th>
                                     <th>Subjects Taken</th>

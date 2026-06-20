@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const archiver = require('archiver');
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
@@ -731,6 +732,38 @@ app.post('/api/generate-pdf/:id', async (req, res) => {
         }
     } else {
         res.status(404).json({ error: "Student not found" });
+    }
+});
+
+app.post('/api/generate-pdf-bulk', async (req, res) => {
+    const { studentIds } = req.body;
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+        return res.status(400).json({ error: "No student IDs provided" });
+    }
+
+    const db = readDb();
+    rankStudents(db);
+    
+    try {
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        
+        res.attachment('Report_Cards.zip');
+        archive.pipe(res);
+
+        for (const id of studentIds) {
+            const student = db.students.find(s => s.id === id);
+            if (student) {
+                const pdfBytes = await generatePDF(student, db);
+                const fileName = `${student.name.replace(/\s+/g, '_')}_Report.pdf`;
+                archive.append(Buffer.from(pdfBytes), { name: fileName });
+            }
+        }
+
+        await archive.finalize();
+    } catch (e) {
+        if (!res.headersSent) {
+            res.status(500).json({ error: e.message });
+        }
     }
 });
 

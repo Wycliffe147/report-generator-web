@@ -134,6 +134,61 @@ document.querySelectorAll('.nav-links li').forEach(item => {
     });
 });
 
+// Bulk Select All
+const selectAllCheckbox = document.getElementById('selectAllReports');
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+        const checkboxes = document.querySelectorAll('.report-cb');
+        checkboxes.forEach(cb => cb.checked = e.target.checked);
+    });
+}
+
+// Download Selected
+const btnDownloadSelected = document.getElementById('btn-download-selected');
+if (btnDownloadSelected) {
+    btnDownloadSelected.addEventListener('click', async () => {
+        const selected = Array.from(document.querySelectorAll('.report-cb:checked')).map(cb => cb.value);
+        if (selected.length === 0) {
+            return alert("Please select at least one student.");
+        }
+        
+        btnDownloadSelected.innerText = 'Zipping... Please wait';
+        
+        try {
+            const res = await apiFetch(`/api/generate-pdf-bulk`, {
+                method: 'POST',
+                body: JSON.stringify({ studentIds: selected })
+            });
+            
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Report_Cards_${selected.length}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                btnDownloadSelected.innerText = '✅ Download Complete';
+            } else {
+                alert('Error generating bulk PDF ZIP.');
+                btnDownloadSelected.innerText = '⬇️ Download Selected as ZIP';
+            }
+        } catch (e) {
+            alert('Network error.');
+        }
+        
+        setTimeout(() => {
+            btnDownloadSelected.innerText = '⬇️ Download Selected as ZIP';
+        }, 3000);
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    renderHeader();
+});
+
 async function fetchStudents() {
     const res = await apiFetch('/api/students');
     students = await res.json();
@@ -467,6 +522,7 @@ async function renderRankingsTab() {
     classStudents.forEach(student => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+            <td><input type="checkbox" class="report-cb" value="${student.id}"></td>
             <td><strong>${student.rank}</strong></td>
             <td>${student.name}</td>
             <td>${student.subjectsCount} Subjects</td>
@@ -483,15 +539,35 @@ async function renderRankingsTab() {
     tbody.querySelectorAll('.download-pdf-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const studentId = btn.getAttribute('data-student-id');
-            btn.innerText = 'Creating...';
-            const res = await apiFetch(`/api/generate-pdf/${studentId}`, { method: 'POST' });
-            if (res.ok) {
-                const data = await res.json();
-                btn.innerText = 'Report Generated!';
-                alert(`PDF Generated successfully as: ${data.fileName} in server reports folder.`);
-                setTimeout(() => btn.innerText = 'Save PDF', 2000);
-            } else {
-                alert('Error generating PDF.');
+            btn.innerText = 'Downloading...';
+            
+            // For single PDF, we can use the bulk API with an array of 1 or stick to window.open.
+            // Since it's a browser, it's easiest to use fetch and blob for actual file download.
+            try {
+                const res = await apiFetch(`/api/generate-pdf-bulk`, {
+                    method: 'POST',
+                    body: JSON.stringify({ studentIds: [studentId] })
+                });
+                
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Report_Cards.zip`; // Even 1 file is zipped for consistency, or we could handle single.
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    
+                    btn.innerText = 'Saved!';
+                    setTimeout(() => btn.innerText = 'Save PDF', 2000);
+                } else {
+                    alert('Error generating PDF.');
+                    btn.innerText = 'Save PDF';
+                }
+            } catch (e) {
+                alert('Network error.');
                 btn.innerText = 'Save PDF';
             }
         });
