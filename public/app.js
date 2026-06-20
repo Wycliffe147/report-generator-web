@@ -173,6 +173,7 @@ if (btnDownloadSelected) {
         try {
             const res = await apiFetch(`/api/generate-pdf-bulk`, {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ studentIds: selected })
             });
             
@@ -570,6 +571,7 @@ async function renderRankingsTab() {
             try {
                 const res = await apiFetch(`/api/generate-pdf-bulk`, {
                     method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ studentIds: [studentId] })
                 });
                 
