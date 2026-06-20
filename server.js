@@ -859,6 +859,8 @@ async function connectToWhatsApp() {
         version,
         auth: state,
         printQRInTerminal: false,
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
         logger: pino({ level: 'info' })
     });
     
