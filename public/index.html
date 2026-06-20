@@ -39,6 +39,7 @@
                 <li data-tab="rankings-tab">Ranks & PDFs</li>
                 <li data-tab="whatsapp-tab">WhatsApp Portal</li>
                 <li data-tab="settings-tab">Settings</li>
+                <li data-tab="superadmin-tab" id="nav-superadmin" style="display:none; color: var(--accent-success); font-weight: bold;">Super Admin</li>
             </ul>
         </nav>
 
@@ -404,6 +405,52 @@
 
                         <button type="submit" class="btn primary-btn" style="width:100%;">Save Settings</button>
                         <button type="button" id="preview-design-btn" class="btn outline-btn" style="width:100%; margin-top:10px; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;">Preview Design (Dummy Student)</button>
+                    </form>
+                </div>
+            </section>
+        
+            <!-- 7. Super Admin Tab -->
+            <section id="superadmin-tab" class="tab-panel">
+                <div class="panel-header" style="background-color: var(--accent-success);">
+                    <h1>Super Admin Dashboard</h1>
+                </div>
+                <div class="card full-width-card">
+                    <h3>SaaS Tenants (Schools)</h3>
+                    <p class="subtitle">Manage subscriptions and schools here.</p>
+                    <div class="table-container" style="margin-top: 15px;">
+                        <table id="saas-schools-table">
+                            <thead>
+                                <tr>
+                                    <th>School ID</th>
+                                    <th>School Name</th>
+                                    <th>Students</th>
+                                    <th>Admin Users</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="card" style="margin-top: 20px;">
+                    <h3>Register New School</h3>
+                    <p class="subtitle">Create a new isolated school tenant.</p>
+                    <form id="new-school-form" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px; max-width: 400px;">
+                        <div>
+                            <label>School Name</label>
+                            <input type="text" id="new-school-name" required>
+                        </div>
+                        <div>
+                            <label>Admin Username</label>
+                            <input type="text" id="new-school-admin" required>
+                        </div>
+                        <div>
+                            <label>Admin Password</label>
+                            <input type="password" id="new-school-pass" required>
+                        </div>
+                        <button type="submit" class="btn primary-btn" style="background-color: var(--accent-success);">Create School</button>
                     </form>
                 </div>
             </section>

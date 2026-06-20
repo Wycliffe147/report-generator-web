@@ -147,6 +147,7 @@ document.querySelectorAll('.nav-links li').forEach(item => {
         if (targetTab === 'rankings-tab') renderRankingsTab();
         if (targetTab === 'whatsapp-tab') setupWhatsAppStatusPolling();
         if (targetTab === 'settings-tab') loadSettings();
+        if (targetTab === 'superadmin-tab') loadSuperAdmin();
     });
 });
 
@@ -260,6 +261,66 @@ if (btnSendSelected) {
         }, 5000);
     });
 }
+
+
+// Super Admin Logic
+async function loadSuperAdmin() {
+    try {
+        const res = await apiFetch('/api/saas/schools');
+        if (!res.ok) return; // Not a superadmin
+        const schools = await res.json();
+        
+        const tbody = document.querySelector('#saas-schools-table tbody');
+        tbody.innerHTML = '';
+        schools.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${s.schoolId}</td>
+                <td><strong>${s.schoolName}</strong></td>
+                <td>${s.studentCount}</td>
+                <td>${s.adminUsers.join(', ')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        console.log("Not a superadmin", e);
+    }
+}
+
+document.getElementById('new-school-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const schoolName = document.getElementById('new-school-name').value;
+    const adminUsername = document.getElementById('new-school-admin').value;
+    const adminPassword = document.getElementById('new-school-pass').value;
+    
+    try {
+        const res = await apiFetch('/api/saas/schools', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ schoolName, adminUsername, adminPassword })
+        });
+        
+        const data = await res.json();
+        if (data.error) return alert(data.error);
+        
+        alert('School created successfully! ID: ' + data.schoolId);
+        document.getElementById('new-school-form').reset();
+        loadSuperAdmin();
+    } catch (e) {
+        alert("Failed to create school.");
+    }
+});
+
+// Hook into header to show Super Admin tab if applicable
+const oldRenderHeader = renderHeader;
+renderHeader = function() {
+    oldRenderHeader();
+    if (currentUser && currentUser.role === 'superadmin') {
+        const navSuper = document.getElementById('nav-superadmin');
+        if (navSuper) navSuper.style.display = 'block';
+    }
+};
+
 
 document.addEventListener("DOMContentLoaded", () => {
     renderHeader();
