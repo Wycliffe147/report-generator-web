@@ -393,6 +393,31 @@ app.delete('/api/saas/schools/:schoolId', authenticateToken, requireSuperAdmin, 
     res.json({ success: true });
 });
 
+app.put('/api/saas/schools/:schoolId', authenticateToken, requireSuperAdmin, (req, res) => {
+    readDb('default');
+    const { schoolId } = req.params;
+    if (!dbCache.schools[schoolId]) return res.status(404).json({ error: "School not found" });
+    const { newUsername, newPassword } = req.body;
+    if (!newUsername && !newPassword) return res.status(400).json({ error: "Provide at least a new username or password" });
+
+    // Find the admin user for this school
+    const adminUser = dbCache.users.find(u => u.schoolId === schoolId && u.role === 'admin');
+    if (!adminUser) return res.status(404).json({ error: "No admin user found for this school" });
+
+    // Check if new username is already taken by another user
+    if (newUsername && newUsername !== adminUser.username) {
+        const taken = dbCache.users.find(u => u.username === newUsername && u.id !== adminUser.id);
+        if (taken) return res.status(400).json({ error: "Username already taken by another user" });
+        adminUser.username = newUsername;
+    }
+    if (newPassword) {
+        adminUser.passwordHash = bcrypt.hashSync(newPassword, 8);
+        adminUser.password = newPassword; // plain text stored for display (consistent with existing behaviour)
+    }
+    writeDb();
+    res.json({ success: true });
+});
+
 app.use('/api', authenticateToken);
 
 app.get('/api/me', (req, res) => {

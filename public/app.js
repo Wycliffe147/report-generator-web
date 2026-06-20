@@ -325,10 +325,14 @@ async function loadSuperAdmin() {
                 <td><strong>${s.schoolName}</strong></td>
                 <td>${s.studentCount}</td>
                 <td>${s.adminUsers.join(', ')}</td>
-                <td>
+                <td style="display:flex; gap:6px;">
+                    <button class="btn outline-btn edit-school-btn" data-id="${s.schoolId}" data-name="${s.schoolName}" data-admin="${s.adminUsers[0] || ''}" style="padding: 5px 10px; font-size: 0.8rem; border: 1px solid var(--primary-color); color: var(--primary-color);">Edit</button>
                     <button class="btn danger-btn delete-school-btn" data-id="${s.schoolId}" style="padding: 5px 10px; font-size: 0.8rem;">Delete</button>
                 </td>
             `;
+            tr.querySelector('.edit-school-btn').addEventListener('click', () => {
+                openEditSchoolModal(s.schoolId, s.schoolName, s.adminUsers[0] || '');
+            });
             tr.querySelector('.delete-school-btn').addEventListener('click', async () => {
                 const confirmed = confirm(`⚠️ DELETE "${s.schoolName}"?\n\nThis will permanently delete ALL students, teachers, and data for this school. This cannot be undone.`);
                 if (!confirmed) return;
@@ -351,6 +355,55 @@ async function loadSuperAdmin() {
         console.log("Not a superadmin", e);
     }
 }
+
+// Edit School Modal logic
+function openEditSchoolModal(schoolId, schoolName, currentAdmin) {
+    document.getElementById('edit-school-id').value = schoolId;
+    document.getElementById('edit-school-label').textContent = `School: ${schoolName}  |  Current admin: ${currentAdmin || 'N/A'}`;
+    document.getElementById('edit-school-username').value = '';
+    document.getElementById('edit-school-password').value = '';
+    document.getElementById('edit-school-error').style.display = 'none';
+    const modal = document.getElementById('edit-school-modal');
+    modal.style.display = 'flex';
+}
+
+document.getElementById('edit-school-cancel')?.addEventListener('click', () => {
+    document.getElementById('edit-school-modal').style.display = 'none';
+});
+
+document.getElementById('edit-school-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const schoolId = document.getElementById('edit-school-id').value;
+    const newUsername = document.getElementById('edit-school-username').value.trim();
+    const newPassword = document.getElementById('edit-school-password').value;
+    const errEl = document.getElementById('edit-school-error');
+
+    if (!newUsername && !newPassword) {
+        errEl.textContent = 'Please fill in at least the username or password.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    try {
+        const res = await apiFetch(`/api/saas/schools/${schoolId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newUsername: newUsername || undefined, newPassword: newPassword || undefined })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Failed to update.';
+            errEl.style.display = 'block';
+            return;
+        }
+        document.getElementById('edit-school-modal').style.display = 'none';
+        alert('School admin credentials updated successfully!');
+        loadSuperAdmin();
+    } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+    }
+});
 
 document.getElementById('new-school-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
