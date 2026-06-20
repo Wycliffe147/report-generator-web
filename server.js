@@ -893,10 +893,11 @@ app.get('/api/preview-pdf/:id', async (req, res) => {
     }
 });
 
-// WhatsApp Integration using Baileys
-let sock = null;
-let qrCodeImage = null;
-let wsConnectionStatus = "Disconnected";
+// WhatsApp Integration using Baileys — per-school sessions
+// Maps keyed by schoolId
+const waSocks = {};           // sock per school
+const waQrImages = {};        // qr data URL per school
+const waStatuses = {};        // connection status per school
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -959,17 +960,26 @@ async function useMongoDBAuthState(collection) {
     };
 }
 
-async function connectToWhatsApp() {
+async function connectToWhatsApp(schoolId = 'default') {
+    // Disconnect existing session for this school if any
+    if (waSocks[schoolId]) {
+        try { waSocks[schoolId].end(undefined); } catch(_) {}
+        delete waSocks[schoolId];
+    }
+
     let state, saveCreds;
     if (mongoDb) {
-        const collection = mongoDb.collection('whatsapp_auth');
+        // Each school gets its own MongoDB collection for auth
+        const collection = mongoDb.collection(`whatsapp_auth_${schoolId}`);
         ({ state, saveCreds } = await useMongoDBAuthState(collection));
     } else {
-        ({ state, saveCreds } = await useMultiFileAuthState('auth_info_baileys'));
+        // Each school gets its own local auth folder
+        ({ state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys_${schoolId}`));
     }
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    
-    sock = makeWASocket({
+
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
         version,
         auth: state,
         printQRInTerminal: false,
@@ -977,47 +987,63 @@ async function connectToWhatsApp() {
         markOnlineOnConnect: false,
         logger: pino({ level: 'silent' })
     });
-    
+
+    waSocks[schoolId] = sock;
+    waStatuses[schoolId] = 'Disconnected';
+    waQrImages[schoolId] = null;
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
-        console.log("CONNECTION UPDATE:", JSON.stringify({ connection, lastDisconnect: !!lastDisconnect, hasQr: !!qr }));
-        
+        console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
+
         if (qr) {
-            wsConnectionStatus = "Scan QR Code";
-            console.log("QR received from Baileys!");
+            waStatuses[schoolId] = 'Scan QR Code';
             try {
-                qrCodeImage = await QRCode.toDataURL(qr);
-                console.log("QR Code successfully converted to data URL.");
+                waQrImages[schoolId] = await QRCode.toDataURL(qr);
             } catch (e) {
-                console.error("Failed to generate QR data URL:", e);
+                console.error(`[WhatsApp:${schoolId}] Failed to generate QR:`, e);
             }
         }
-        
+
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            wsConnectionStatus = "Disconnected";
-            qrCodeImage = null;
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            waStatuses[schoolId] = 'Disconnected';
+            waQrImages[schoolId] = null;
+            delete waSocks[schoolId];
             if (shouldReconnect) {
-                connectToWhatsApp();
+                console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
+                connectToWhatsApp(schoolId);
+            } else {
+                console.log(`[WhatsApp:${schoolId}] Logged out — will not auto-reconnect.`);
             }
         } else if (connection === 'open') {
-            wsConnectionStatus = "Connected";
-            qrCodeImage = null;
-            console.log('✅ WhatsApp successfully connected!');
+            waStatuses[schoolId] = 'Connected';
+            waQrImages[schoolId] = null;
+            console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
         }
     });
-    
+
     sock.ev.on('creds.update', saveCreds);
 }
 
 // WhatsApp service is started after initDB inside app.listen block
 
 app.get('/api/whatsapp/status', (req, res) => {
-    res.json({ status: wsConnectionStatus, qr: qrCodeImage });
+    const schoolId = req.user ? req.user.schoolId : 'default';
+    // Auto-start a session for this school if none exists yet
+    if (!waSocks[schoolId] && waStatuses[schoolId] !== 'Connecting') {
+        waStatuses[schoolId] = 'Connecting';
+        connectToWhatsApp(schoolId);
+    }
+    res.json({
+        status: waStatuses[schoolId] || 'Disconnected',
+        qr: waQrImages[schoolId] || null
+    });
 });
 
 app.post('/api/whatsapp/send', async (req, res) => {
+    const schoolId = req.user ? req.user.schoolId : 'default';
+    const sock = waSocks[schoolId];
     const { studentId } = req.body;
     const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
@@ -1028,7 +1054,7 @@ app.post('/api/whatsapp/send', async (req, res) => {
         return res.status(404).json({ error: "Student not found" });
     }
 
-    if (wsConnectionStatus !== "Connected") {
+    if (waStatuses[schoolId] !== 'Connected') {
         return res.status(400).json({ error: "WhatsApp is not connected. Scan the QR code first." });
     }
 
@@ -1065,7 +1091,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
 });
 
 initDB().then(() => {
-    connectToWhatsApp();
+    // Do NOT auto-connect WhatsApp globally.
+    // Each school will connect lazily when they visit their WhatsApp portal.
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
     });
