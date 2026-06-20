@@ -52,15 +52,15 @@ function readDb() {
     }
     if (!db.settings.gradingSystem) {
         db.settings.gradingSystem = [
-            { min: 80, grade: "D1", points: 1, remark: "Distinction" },
-            { min: 75, grade: "D2", points: 2, remark: "Distinction" },
-            { min: 70, grade: "C3", points: 3, remark: "Credit" },
-            { min: 65, grade: "C4", points: 4, remark: "Credit" },
-            { min: 60, grade: "C5", points: 5, remark: "Credit" },
-            { min: 50, grade: "C6", points: 6, remark: "Credit" },
-            { min: 45, grade: "P7", points: 7, remark: "Pass" },
-            { min: 40, grade: "P8", points: 8, remark: "Pass" },
-            { min: 0, grade: "F9", points: 9, remark: "Fail" }
+            { min: 80, points: 1, remark: "Distinction" },
+            { min: 75, points: 2, remark: "Distinction" },
+            { min: 70, points: 3, remark: "Credit" },
+            { min: 65, points: 4, remark: "Credit" },
+            { min: 60, points: 5, remark: "Credit" },
+            { min: 50, points: 6, remark: "Credit" },
+            { min: 45, points: 7, remark: "Pass" },
+            { min: 40, points: 8, remark: "Pass" },
+            { min: 0, points: 9, remark: "Fail" }
         ];
     }
     if (!db.users) {
@@ -92,14 +92,14 @@ function writeDb(data) {
 }
 
 // Calculate Grades
-function getGrade(score, db) {
-    if (score === null || score === undefined || score === '') return { grade: '-', points: 9, remark: 'No Grade' };
-    const num = Number(score);
-    const rules = [...db.settings.gradingSystem].sort((a, b) => b.min - a.min);
+function getGrade(scoreStr, db) {
+    if (scoreStr === '' || scoreStr === null || scoreStr === undefined) return { points: 9, remark: 'No Grade' };
+    const score = Number(scoreStr);
+    const rules = [...(db.settings.gradingSystem || [])].sort((a, b) => b.min - a.min);
     for (const rule of rules) {
-        if (num >= rule.min) return { grade: rule.grade, points: rule.points, remark: rule.remark };
+        if (score >= rule.min) return { points: rule.points, remark: rule.remark };
     }
-    return { grade: "F9", points: 9, remark: "Fail" };
+    return { points: 9, remark: "Fail" };
 }
 
 // Calculate Student Rankings
@@ -430,14 +430,19 @@ async function generatePDF(student, db) {
     page.drawText(`Total Points: ${student.mscePoints} (Best 6 Subjects)`, { x: 380, y: height - 160, size: 10, font: fontRegular });
 
     // Table Header
+    const columns = [
+        { title: 'Subject', x: 40 },
+        { title: 'Score (%)', x: 170 },
+        { title: 'Points', x: 250 },
+        { title: 'Remark', x: 330 },
+        { title: 'Teacher', x: 440 }
+    ];
     const tableTop = height - 200;
     page.drawLine({ start: { x: 40, y: tableTop }, end: { x: 550, y: tableTop }, thickness: 1.5, color: rgb(0.1, 0.1, 0.1) });
     
-    page.drawText('Subject', { x: 45, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Score (%)', { x: 170, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Points', { x: 250, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Remark', { x: 330, y: tableTop - 20, size: 10, font: fontBold });
-    page.drawText('Teacher', { x: 440, y: tableTop - 20, size: 10, font: fontBold });
+    columns.forEach(col => {
+        page.drawText(col.title, { x: col.x, y: tableTop - 20, size: 10, font: fontBold });
+    });
     
     page.drawLine({ start: { x: 40, y: tableTop - 30 }, end: { x: 550, y: tableTop - 30 }, thickness: 1, color: rgb(0.3, 0.3, 0.3) });
 
@@ -447,18 +452,18 @@ async function generatePDF(student, db) {
         if (student.subjects[sub]) {
             const score = student.marks[sub];
             const hasScore = score !== null && score !== undefined && score !== '';
-            const gradeInfo = hasScore ? getGrade(score, db) : { grade: '-', points: '-', remark: 'Absent/No Score' };
+            const gradeInfo = hasScore ? getGrade(score, db) : { points: '-', remark: 'Absent/No Score' };
 
             const teachersForSub = db.users
                 .filter(u => u.role === 'teacher' && (u.subjects || []).includes(sub))
                 .map(u => u.name).join(', ');
             const teacherName = teachersForSub || '-';
 
-            page.drawText(sub, { x: 45, y: currentY, size: 10, font: fontRegular });
-            page.drawText(hasScore ? `${score}%` : '-', { x: 170, y: currentY, size: 10, font: fontRegular });
-            page.drawText(String(gradeInfo.points), { x: 250, y: currentY, size: 10, font: fontRegular });
-            page.drawText(gradeInfo.remark, { x: 330, y: currentY, size: 10, font: fontRegular });
-            page.drawText(teacherName, { x: 440, y: currentY, size: 9, font: fontRegular });
+            page.drawText(sub, { x: columns[0].x, y: currentY, size: 10, font: fontRegular });
+            page.drawText(hasScore ? `${score}%` : '-', { x: columns[1].x, y: currentY, size: 10, font: fontRegular });
+            page.drawText(String(gradeInfo.points), { x: columns[2].x, y: currentY, size: 10, font: fontRegular });
+            page.drawText(gradeInfo.remark, { x: columns[3].x, y: currentY, size: 10, font: fontRegular });
+            page.drawText(teacherName, { x: columns[4].x, y: currentY, size: 9, font: fontRegular });
 
             // Light separation line
             page.drawLine({ start: { x: 40, y: currentY - 8 }, end: { x: 550, y: currentY - 8 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });

@@ -556,18 +556,16 @@ async function loadSettings() {
     }
 }
 
-function addGradingRow(rule = {min: 0, grade: '', points: 0, remark: ''}) {
+function addGradingRow(rule = {min: '', points: '', remark: ''}) {
     const tbody = document.getElementById('grading-tbody');
     const tr = document.createElement('tr');
-    tr.className = 'grading-row';
     tr.innerHTML = `
-        <td><input type="number" class="g-min" value="${rule.min}" required style="width: 60px; padding: 5px;"></td>
-        <td><input type="text" class="g-grade" value="${rule.grade}" required style="width: 60px; padding: 5px;"></td>
-        <td><input type="number" class="g-points" value="${rule.points}" required style="width: 60px; padding: 5px;"></td>
-        <td><input type="text" class="g-remark" value="${rule.remark}" required style="width: 100px; padding: 5px;"></td>
-        <td><button type="button" class="btn danger-btn remove-rule-btn" style="padding: 5px 10px;">X</button></td>
+        <td><input type="number" name="minMarks[]" value="${rule.min}" required style="width: 80px;"></td>
+        <td><input type="number" name="points[]" value="${rule.points}" required style="width: 80px;"></td>
+        <td><input type="text" name="remark[]" value="${rule.remark}" required style="width: 150px;"></td>
+        <td><button type="button" class="btn danger-btn remove-grade-btn" style="padding:5px;">Remove</button></td>
     `;
-    tr.querySelector('.remove-rule-btn').addEventListener('click', () => tr.remove());
+    tr.querySelector('.remove-grade-btn').addEventListener('click', () => tr.remove());
     tbody.appendChild(tr);
 }
 
@@ -578,12 +576,11 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     const formData = new FormData(e.target);
     
     const rules = [];
-    document.querySelectorAll('.grading-row').forEach(row => {
+    document.querySelectorAll('#grading-tbody tr').forEach(tr => {
         rules.push({
-            min: Number(row.querySelector('.g-min').value),
-            grade: row.querySelector('.g-grade').value,
-            points: Number(row.querySelector('.g-points').value),
-            remark: row.querySelector('.g-remark').value
+            min: Number(tr.querySelector('input[name="minMarks[]"]').value),
+            points: Number(tr.querySelector('input[name="points[]"]').value),
+            remark: tr.querySelector('input[name="remark[]"]').value
         });
     });
     formData.append('gradingSystem', JSON.stringify(rules));
