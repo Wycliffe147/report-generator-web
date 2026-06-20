@@ -312,13 +312,13 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
 
 app.get('/api/users', requireAdmin, (req, res) => {
     const db = readDb();
-    const safeUsers = db.users.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects }));
+    const safeUsers = db.users.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects, password: u.password }));
     res.json(safeUsers);
 });
 
 app.post('/api/users', requireAdmin, (req, res) => {
     const db = readDb();
-    const { id, username, name, password, subjects } = req.body;
+    const { id, username, name, password, role, subjects } = req.body;
     
     if (id) {
         const idx = db.users.findIndex(u => u.id === id);
@@ -326,8 +326,10 @@ app.post('/api/users', requireAdmin, (req, res) => {
             db.users[idx].username = username;
             db.users[idx].name = name;
             db.users[idx].subjects = subjects || [];
+            if (role) db.users[idx].role = role;
             if (password) {
                 db.users[idx].passwordHash = bcrypt.hashSync(password, 8);
+                db.users[idx].password = password; // Storing plaintext for admin reference
             }
         }
     } else {
@@ -339,7 +341,8 @@ app.post('/api/users', requireAdmin, (req, res) => {
             username,
             name,
             passwordHash: bcrypt.hashSync(password, 8),
-            role: 'teacher',
+            password: password, // Storing plaintext for admin reference
+            role: role || 'teacher',
             subjects: subjects || []
         });
     }

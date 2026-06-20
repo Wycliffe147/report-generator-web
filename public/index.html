@@ -138,9 +138,16 @@
                             <label>Password</label>
                             <input type="text" id="staff-password" placeholder="(Leave blank to keep current)">
                         </div>
+                        <div class="input-group" style="width: 150px;">
+                            <label>Role</label>
+                            <select id="staff-role" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 1rem;">
+                                <option value="teacher">Teacher</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
                         <div class="input-group" style="width: 100%; margin-top: 10px;">
-                            <label>Assigned Subjects</label>
-                            <div id="staff-subjects-checkboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">
+                            <label>Assigned Subjects (For currently selected Class)</label>
+                            <div id="staff-subjects-checkboxes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; background: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee;">
                                 <!-- Checkboxes populated dynamically in JS -->
                             </div>
                         </div>
@@ -159,7 +166,8 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Username</th>
-                                    <th>Subjects Taught</th>
+                                    <th>Password</th>
+                                    <th>Subjects Taught (This Class)</th>
                                     <th>Role</th>
                                     <th>Actions</th>
                                 </tr>

@@ -275,6 +275,7 @@ async function renderStaffTab() {
         tr.innerHTML = `
             <td>${u.name}</td>
             <td>${u.username}</td>
+            <td>${u.password || '******'}</td>
             <td>${u.role === 'admin' ? 'ALL' : classSubs.join(', ') || 'None'}</td>
             <td>${u.role}</td>
             <td>
@@ -288,6 +289,7 @@ async function renderStaffTab() {
             document.getElementById('staff-name').value = u.name;
             document.getElementById('staff-username').value = u.username;
             document.getElementById('staff-password').placeholder = "(Leave blank to keep current)";
+            document.getElementById('staff-role').value = u.role || 'teacher';
             
             document.querySelectorAll('.staff-sub-cb').forEach(cb => {
                 cb.checked = classSubs.includes(cb.value);
@@ -316,6 +318,7 @@ document.getElementById('add-staff-form').addEventListener('submit', async (e) =
     const name = document.getElementById('staff-name').value;
     const username = document.getElementById('staff-username').value;
     const password = document.getElementById('staff-password').value;
+    const role = document.getElementById('staff-role').value;
     
     const existingUser = users.find(u => u.id === id);
     const existingSubjects = existingUser ? (existingUser.subjects || []) : [];
@@ -335,7 +338,7 @@ document.getElementById('add-staff-form').addEventListener('submit', async (e) =
         const res = await apiFetch('/api/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, name, username, password, subjects })
+            body: JSON.stringify({ id, name, username, password, role, subjects })
         });
         
         if (res.ok) {
