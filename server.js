@@ -9,6 +9,8 @@ const QRCode = require('qrcode');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
+const { MongoClient } = require('mongodb');
 
 const JWT_SECRET = 'super-secret-excel-academy-key-change-me';
 
@@ -17,6 +19,42 @@ const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'db.json');
 const REPORTS_DIR = path.join(__dirname, 'reports');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
+
+let dbCache = null;
+let mongoClient = null;
+let mongoDb = null;
+
+async function initDB() {
+    const uri = process.env.MONGODB_URI || "mongodb+srv://Wy:WyDB147@cluster0.btysrgt.mongodb.net/?appName=Cluster0";
+    try {
+        mongoClient = new MongoClient(uri);
+        await mongoClient.connect();
+        mongoDb = mongoClient.db('report_generator');
+        console.log("✅ Connected to MongoDB Cloud");
+        
+        const stateCollection = mongoDb.collection('app_state');
+        const state = await stateCollection.findOne({ _id: 'main' });
+        
+        if (state && state.data) {
+            dbCache = state.data;
+        } else {
+            console.log("No data found in MongoDB. Initializing fresh DB.");
+            if (fs.existsSync(DB_FILE)) {
+                dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+            } else {
+                dbCache = { students: [], users: [], subjects: [], settings: {} };
+            }
+            await stateCollection.insertOne({ _id: 'main', data: dbCache });
+        }
+    } catch (err) {
+        console.error("❌ Failed to connect to MongoDB, falling back to local file:", err);
+        if (fs.existsSync(DB_FILE)) {
+            dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        } else {
+            dbCache = { students: [], users: [], subjects: [], settings: {} };
+        }
+    }
+}
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 const upload = multer({ dest: UPLOADS_DIR });
@@ -48,7 +86,7 @@ if (!fs.existsSync(DB_FILE)) {
 }
 
 function readDb() {
-    const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    const db = dbCache;
     
     if (!db.settings) {
         db.settings = {
@@ -135,8 +173,18 @@ function readDb() {
     return db;
 }
 
-function writeDb(data) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+function writeDb(db) {
+    dbCache = db;
+    if (mongoDb) {
+        mongoDb.collection('app_state').updateOne(
+            { _id: 'main' },
+            { $set: { data: db } },
+            { upsert: true }
+        ).catch(err => console.error("MongoDB Save Error:", err));
+    }
+    fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), (err) => {
+        if (err) console.error("Local backup failed:", err);
+    });
 }
 
 // Calculate Grades
@@ -823,6 +871,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+initDB().then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+    });
 });
