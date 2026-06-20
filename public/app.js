@@ -134,7 +134,15 @@ async function loadSchoolOptions() {
       opt.textContent = s.schoolName;
       select.appendChild(opt);
     });
+    // Always append Super Admin option at the bottom
+    const saOpt = document.createElement('option');
+    saOpt.value = 'superadmin';
+    saOpt.textContent = '🔑 Super Admin';
+    select.appendChild(saOpt);
   } catch (e) {
+    // If fetch fails, at least keep Super Admin option
+    const select = document.getElementById('login-school');
+    select.innerHTML = '<option value="" disabled selected>Select your school</option><option value="superadmin">🔑 Super Admin</option>';
     console.error(e);
   }
 }

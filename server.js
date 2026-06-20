@@ -263,34 +263,39 @@ app.post('/api/login', (req, res) => {
     // Force readDb to initialize structure
     readDb('default');
     const { username, password, schoolId } = req.body;
-    // Find user by username and schoolId (allow superadmin regardless of schoolId)
-    const user = dbCache.users.find(u => u.username === username && (u.schoolId === schoolId || u.role === 'superadmin'));
+
+    // Superadmin login: schoolId will be 'superadmin' (special value from the dropdown)
+    if (schoolId === 'superadmin') {
+        const user = dbCache.users.find(u => u.username === username && u.role === 'superadmin');
+        if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
+        return res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
+    }
+
+    // Regular school login: match by username + schoolId, fallback schoolId to 'default' for legacy users
+    const user = dbCache.users.find(u =>
+        u.username === username &&
+        (u.schoolId === schoolId || (!u.schoolId && schoolId === 'default'))
+    );
     if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
         return res.status(401).json({ error: "Invalid credentials" });
     }
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects, name: user.name } });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
 });
 
 // Public endpoint to list available schools (no auth required)
+// Excludes the internal 'default' placeholder school
 app.get('/api/public/schools', (req, res) => {
-    // Ensure schools structure is initialized
     readDb('default');
-    const list = Object.keys(dbCache.schools).map(id => ({
-        schoolId: id,
-        schoolName: dbCache.schools[id].settings.schoolName || 'Unnamed School'
-    }));
-    res.json(list);
-});
-
-// Public endpoint to list available schools (no auth required)
-app.get('/api/public/schools', (req, res) => {
-    // Ensure schools structure is initialized
-    readDb('default');
-    const list = Object.keys(dbCache.schools).map(id => ({
-        schoolId: id,
-        schoolName: dbCache.schools[id].settings.schoolName || 'Unnamed School'
-    }));
+    const list = Object.keys(dbCache.schools)
+        .filter(id => id !== 'default')
+        .map(id => ({
+            schoolId: id,
+            schoolName: dbCache.schools[id].settings.schoolName || 'Unnamed School'
+        }));
     res.json(list);
 });
 
