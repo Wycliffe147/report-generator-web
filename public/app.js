@@ -1095,6 +1095,37 @@ document.getElementById('whatsapp-logout-btn').addEventListener('click', async (
     }
 });
 
+// Helper for adaptive WhatsApp send delays
+function getAdaptiveDelay(totalCount, currentIndex) {
+    let baseDelay = 15000; // default 15s
+    let jitter = (Math.random() * 6000) - 3000; // default +-3s
+    let restingBreak = false;
+    
+    if (totalCount <= 2) {
+        baseDelay = 3000;
+        jitter = (Math.random() * 2000) - 1000;
+    } else if (totalCount <= 10) {
+        baseDelay = 8000;
+        jitter = (Math.random() * 4000) - 2000;
+    } else if (totalCount <= 30) {
+        baseDelay = 15000;
+        jitter = (Math.random() * 6000) - 3000;
+    } else {
+        baseDelay = 25000;
+        jitter = (Math.random() * 10000) - 5000;
+    }
+    
+    let delay = Math.max(2000, baseDelay + jitter);
+    
+    // Add resting break every 10 messages for large runs
+    if (totalCount > 30 && currentIndex > 0 && currentIndex % 10 === 0) {
+        delay += 45000;
+        restingBreak = true;
+    }
+    
+    return { delay, restingBreak };
+}
+
 // Bulk Send Report Cards
 document.getElementById('send-all-btn').addEventListener('click', async () => {
     await fetchStudents();
@@ -1108,7 +1139,7 @@ document.getElementById('send-all-btn').addEventListener('click', async () => {
     const progressText = document.getElementById('bulk-progress-text');
 
     progressBox.style.display = 'block';
-    progressFill.style.style = '0%';
+    progressFill.style.width = '0%';
     
     let successCount = 0;
     let failCount = 0;
@@ -1132,9 +1163,31 @@ document.getElementById('send-all-btn').addEventListener('click', async () => {
         const percentage = Math.round(((i + 1) / students.length) * 100);
         progressFill.style.width = `${percentage}%`;
 
-        // Wait a delay between sends to prevent anti-spam trigger
-        const delayValue = parseInt(document.getElementById('bulk-send-delay').value) || 15000;
-        await new Promise(resolve => setTimeout(resolve, delayValue));
+        // Wait with a countdown before sending the next message
+        if (i < students.length - 1) {
+            const selectedDelayVal = document.getElementById('bulk-send-delay').value;
+            let delayMs = 15000;
+            let isResting = false;
+            
+            if (selectedDelayVal === 'adaptive') {
+                const adaptiveObj = getAdaptiveDelay(students.length, i + 1);
+                delayMs = adaptiveObj.delay;
+                isResting = adaptiveObj.restingBreak;
+            } else {
+                const baseDelay = parseInt(selectedDelayVal) || 15000;
+                // Add a small +- 2s random jitter to avoid robotic intervals
+                const jitter = (Math.random() * 4000) - 2000;
+                delayMs = Math.max(2000, baseDelay + jitter);
+            }
+            
+            let secondsLeft = Math.round(delayMs / 1000);
+            while (secondsLeft > 0) {
+                const breakMsg = isResting ? " (Resting break to avoid spam block)" : "";
+                progressText.innerText = `Sent report card for ${s.name} (${i + 1}/${students.length}). Waiting ${secondsLeft}s before next...${breakMsg}`;
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                secondsLeft--;
+            }
+        }
     }
 
     progressText.innerText = `Completed bulk send! Success: ${successCount}, Failed: ${failCount}`;
