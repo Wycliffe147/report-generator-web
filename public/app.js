@@ -184,6 +184,12 @@ function renderSchoolList(filter = '') {
     }
 }
 
+function goBackToSchoolList() {
+    document.getElementById('login-step-2').style.display = 'none';
+    document.getElementById('login-step-1').style.display = 'block';
+    document.getElementById('school-search').focus();
+}
+
 function selectSchool(schoolId, schoolName) {
     document.getElementById('login-school').value = schoolId;
     document.getElementById('login-school-label').textContent = schoolName;
@@ -193,12 +199,20 @@ function selectSchool(schoolId, schoolName) {
     document.getElementById('login-password').value = '';
     document.getElementById('login-error').style.display = 'none';
     setTimeout(() => document.getElementById('login-username').focus(), 50);
+    // Push a history state so the phone's back gesture comes here first
+    history.pushState({ loginStep: 2 }, '');
 }
 
 document.getElementById('login-back-btn').addEventListener('click', () => {
-    document.getElementById('login-step-2').style.display = 'none';
-    document.getElementById('login-step-1').style.display = 'block';
-    document.getElementById('school-search').focus();
+    history.back(); // triggers popstate which calls goBackToSchoolList
+});
+
+// Intercept phone/browser back gesture while on step 2
+window.addEventListener('popstate', (e) => {
+    const step2 = document.getElementById('login-step-2');
+    if (step2 && step2.style.display !== 'none') {
+        goBackToSchoolList();
+    }
 });
 
 document.getElementById('school-search').addEventListener('input', (e) => {

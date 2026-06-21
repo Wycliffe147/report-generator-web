@@ -30,13 +30,10 @@
 
             <!-- Step 2: Credentials (hidden until school selected) -->
             <div id="login-step-2" style="display:none;">
-                <!-- Back button + school name -->
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
-                    <button type="button" id="login-back-btn" style="background:none; border:none; cursor:pointer; font-size:1.3rem; color:var(--primary-color); padding:0;">←</button>
-                    <div style="text-align:left;">
-                        <p style="font-size:0.78rem; color:var(--text-secondary); margin:0;">Logging into</p>
-                        <p id="login-school-label" style="font-weight:700; font-size:1rem; margin:0; color:var(--text-primary);"></p>
-                    </div>
+                <!-- School name header -->
+                <div style="text-align:center; margin-bottom:22px;">
+                    <p style="font-size:0.78rem; color:var(--text-secondary); margin:0 0 4px;">Logging into</p>
+                    <p id="login-school-label" style="font-weight:700; font-size:1.15rem; margin:0; color:var(--text-primary);"></p>
                 </div>
 
                 <form id="login-form">
@@ -45,11 +42,14 @@
                         <label>Username</label>
                         <input type="text" id="login-username" placeholder="Enter username" required style="width:100%;">
                     </div>
-                    <div class="input-group" style="margin-bottom:20px; text-align:left;">
+                    <div class="input-group" style="margin-bottom:16px; text-align:left;">
                         <label>Password</label>
                         <input type="password" id="login-password" placeholder="Enter password" required style="width:100%;">
                     </div>
-                    <button type="submit" class="btn primary-btn" style="width:100%;">Login</button>
+                    <button type="submit" class="btn primary-btn" style="width:100%; margin-bottom:10px;">Login</button>
+                    <button type="button" id="login-back-btn" class="btn" style="width:100%; background:transparent; border:1px solid var(--border-color); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:8px;">
+                        <span style="font-size:1.1rem;">←</span> Back to school list
+                    </button>
                     <p id="login-error" style="color:red; margin-top:10px; display:none;"></p>
                 </form>
             </div>
