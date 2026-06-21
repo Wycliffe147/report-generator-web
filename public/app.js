@@ -73,6 +73,9 @@ async function checkLogin() {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         document.getElementById('user-greeting').innerText = `Welcome, ${currentUser.name}`;
+        if (document.getElementById('user-greeting-header')) {
+            document.getElementById('user-greeting-header').innerText = `Welcome, ${currentUser.name}`;
+        }
         document.getElementById('class-selector-container').style.display = 'flex';
         
         await loadGlobals();

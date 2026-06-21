@@ -63,7 +63,16 @@
                 <h2>Excel Academy</h2>
                 <span id="user-greeting">Report Dashboard</span>
                 <br>
-                <button id="logout-btn" class="btn outline-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 5px;">Logout</button>
+                <button id="logout-btn" class="btn outline-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 5px; margin-bottom: 10px;">Logout</button>
+                <div id="class-selector-container" style="display: none; align-items: center; gap: 10px; margin-top: 10px;">
+                    <label for="global-class-select" style="color: var(--text-primary); font-weight: bold; font-size: 0.9rem;">Class:</label>
+                    <select id="global-class-select" style="padding: 6px; border-radius: 5px; font-weight: bold; background: var(--bg-card); color: white; border: 1px solid var(--border-color); flex: 1; cursor: pointer;">
+                        <option value="Form 1">Form 1</option>
+                        <option value="Form 2">Form 2</option>
+                        <option value="Form 3">Form 3</option>
+                        <option value="Form 4">Form 4</option>
+                    </select>
+                </div>
             </div>
             <ul class="nav-links">
                 <li class="active" data-tab="students-tab">Students</li>
@@ -84,17 +93,8 @@
                     <div class="logo-container">
                         <h2 style="color: white; margin: 0;">School Report Generator</h2>
                     </div>
-                    <div id="class-selector-container" style="display: none; align-items: center; gap: 10px; margin-left: 30px;">
-                        <label for="global-class-select" style="color: white; font-weight: bold;">Class:</label>
-                        <select id="global-class-select" style="padding: 5px; border-radius: 5px; font-weight: bold;">
-                            <option value="Form 1">Form 1</option>
-                            <option value="Form 2">Form 2</option>
-                            <option value="Form 3">Form 3</option>
-                            <option value="Form 4">Form 4</option>
-                        </select>
-                    </div>
                     <div class="nav-right" style="margin-left: auto; display: flex; align-items: center; gap: 20px;">
-                        <span id="user-greeting" style="color: white;"></span>
+                        <span id="user-greeting-header" style="color: white;"></span>
                         <div class="search-bar">
                             <input type="text" id="student-search" placeholder="Search students by name...">
                         </div>
