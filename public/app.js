@@ -495,6 +495,53 @@ document.getElementById('new-school-form')?.addEventListener('submit', async (e)
     }
 });
 
+// Superadmin — update own credentials
+document.getElementById('superadmin-account-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newUsername = document.getElementById('sa-new-username').value.trim();
+    const newPassword = document.getElementById('sa-new-password').value;
+    const confirmPassword = document.getElementById('sa-confirm-password').value;
+    const errEl = document.getElementById('sa-account-error');
+    const okEl  = document.getElementById('sa-account-success');
+
+    errEl.style.display = 'none';
+    okEl.style.display  = 'none';
+
+    if (!newUsername && !newPassword) {
+        errEl.textContent = 'Please fill in at least the username or password.';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (newPassword && newPassword !== confirmPassword) {
+        errEl.textContent = 'Passwords do not match.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    try {
+        const res = await apiFetch('/api/saas/me', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                newUsername: newUsername || undefined,
+                newPassword: newPassword || undefined
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Update failed.';
+            errEl.style.display = 'block';
+        } else {
+            okEl.textContent = '✅ Credentials updated! You will need to use the new credentials next time you log in.';
+            okEl.style.display = 'block';
+            document.getElementById('superadmin-account-form').reset();
+        }
+    } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+    }
+});
+
 document.addEventListener("DOMContentLoaded", () => {
     checkLogin();
 });

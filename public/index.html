@@ -472,6 +472,29 @@
                         <button type="submit" class="btn primary-btn" style="background-color: var(--accent-success);">Create School</button>
                     </form>
                 </div>
+
+                <!-- My Account -->
+                <div class="card" style="margin-top: 20px; border-left: 4px solid var(--accent-blue);">
+                    <h3 style="margin-bottom:6px;">👤 My Account</h3>
+                    <p class="subtitle" style="margin-bottom:16px;">Update your superadmin username and/or password.</p>
+                    <form id="superadmin-account-form" style="display:flex; flex-direction:column; gap:12px; max-width:400px;">
+                        <div class="input-group">
+                            <label>New Username</label>
+                            <input type="text" id="sa-new-username" placeholder="Leave blank to keep current">
+                        </div>
+                        <div class="input-group">
+                            <label>New Password</label>
+                            <input type="password" id="sa-new-password" placeholder="Leave blank to keep current">
+                        </div>
+                        <div class="input-group">
+                            <label>Confirm New Password</label>
+                            <input type="password" id="sa-confirm-password" placeholder="Repeat new password">
+                        </div>
+                        <p id="sa-account-error" style="color:#dc2626; display:none; font-size:0.88rem;"></p>
+                        <p id="sa-account-success" style="color:#059669; display:none; font-size:0.88rem;"></p>
+                        <button type="submit" class="btn primary-btn" style="width:100%;">Save My Credentials</button>
+                    </form>
+                </div>
             </section>
         </main>
     </div>

@@ -419,6 +419,30 @@ app.put('/api/saas/schools/:schoolId', authenticateToken, requireSuperAdmin, (re
     res.json({ success: true });
 });
 
+app.put('/api/saas/me', authenticateToken, requireSuperAdmin, (req, res) => {
+    readDb('default');
+    const { newUsername, newPassword } = req.body;
+    if (!newUsername && !newPassword) {
+        return res.status(400).json({ error: 'Provide at least a new username or password.' });
+    }
+
+    const me = dbCache.users.find(u => u.id === req.user.id);
+    if (!me) return res.status(404).json({ error: 'Superadmin account not found.' });
+
+    if (newUsername && newUsername !== me.username) {
+        const taken = dbCache.users.find(u => u.username === newUsername && u.id !== me.id);
+        if (taken) return res.status(400).json({ error: 'Username already taken.' });
+        me.username = newUsername;
+    }
+    if (newPassword) {
+        me.passwordHash = bcrypt.hashSync(newPassword, 8);
+        me.password = newPassword;
+    }
+
+    writeDb();
+    res.json({ success: true });
+});
+
 app.use('/api', authenticateToken);
 
 app.get('/api/me', (req, res) => {
