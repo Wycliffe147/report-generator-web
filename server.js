@@ -557,9 +557,14 @@ app.get('/api/students', (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     let ranked = db.students;
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
         const teacherSubjects = req.user.subjects || [];
-        ranked = ranked.filter(s => teacherSubjects.some(sub => s.subjects[sub]));
+        // Show students who are ENROLLED in at least one of the teacher's subjects
+        // Check key existence (s.subjects[sub] !== undefined) not truthiness,
+        // so students with no marks yet are still visible
+        ranked = ranked.filter(s =>
+            teacherSubjects.some(sub => s.subjects && sub in s.subjects)
+        );
     }
     res.json(ranked);
 });
