@@ -1132,8 +1132,9 @@ document.getElementById('send-all-btn').addEventListener('click', async () => {
         const percentage = Math.round(((i + 1) / students.length) * 100);
         progressFill.style.width = `${percentage}%`;
 
-        // Wait a short delay between sends to prevent anti-spam trigger (e.g. 4 seconds)
-        await new Promise(resolve => setTimeout(resolve, 4000));
+        // Wait a delay between sends to prevent anti-spam trigger
+        const delayValue = parseInt(document.getElementById('bulk-send-delay').value) || 15000;
+        await new Promise(resolve => setTimeout(resolve, delayValue));
     }
 
     progressText.innerText = `Completed bulk send! Success: ${successCount}, Failed: ${failCount}`;

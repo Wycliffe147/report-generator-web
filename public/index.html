@@ -295,15 +295,37 @@
                     <div class="card bulk-card">
                         <h3>Bulk Report Sender</h3>
                         <p class="subtitle">Send progress reports to parents on WhatsApp in a single click</p>
+                        
+                        <div class="input-group" style="margin-top: 15px; margin-bottom: 15px;">
+                            <label for="bulk-send-delay" style="font-weight: bold; font-size: 0.9rem;">Delay Between Messages:</label>
+                            <select id="bulk-send-delay" style="padding: 8px; border-radius: 5px; background: var(--bg-primary); color: white; border: 1px solid var(--border-color); width: 100%; margin-top: 5px; cursor: pointer;">
+                                <option value="15000" selected>Safe (15 seconds)</option>
+                                <option value="30000">Extra Safe (30 seconds)</option>
+                                <option value="60000">Super Safe (60 seconds)</option>
+                                <option value="5000">Fast (5 seconds - High Spam Risk)</option>
+                            </select>
+                        </div>
+
                         <div class="bulk-actions">
                             <button id="send-all-btn" class="btn primary-btn large-btn">Send Reports to All Registered Parents</button>
                         </div>
+
                         <div class="progress-container" style="display:none;" id="bulk-progress-box">
                             <h4>Sending progress...</h4>
                             <div class="progress-bar">
                                 <div class="progress-fill" id="bulk-progress-fill" style="width: 0%"></div>
                             </div>
                             <span id="bulk-progress-text">Processing...</span>
+                        </div>
+
+                        <div class="alert alert-warning" style="background: rgba(239, 68, 68, 0.15); border: 1px solid var(--accent-danger); padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 0.85rem; color: #f8fafc; line-height: 1.4;">
+                            <strong>⚠️ Avoid WhatsApp Restrictions:</strong>
+                            <ul style="margin-left: 15px; margin-top: 5px; list-style-type: disc;">
+                                <li>Ensure parent phone numbers are saved in your phone's address book.</li>
+                                <li>Ask parents to add the school's WhatsApp number to their contacts first.</li>
+                                <li>Use the <strong>Safe (15s)</strong> or <strong>Extra Safe (30s)</strong> delay settings.</li>
+                                <li>Avoid sending bulk messages to newly connected WhatsApp numbers right away.</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
