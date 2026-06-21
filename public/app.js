@@ -363,8 +363,31 @@ if (btnSendSelected) {
             const percentage = Math.round(((i + 1) / selected.length) * 100);
             progressFill.style.width = `${percentage}%`;
 
-            // Delay between sends to prevent blocking/spam trigger
-            await new Promise(resolve => setTimeout(resolve, 4000));
+            // Wait with a countdown before sending the next message
+            if (i < selected.length - 1) {
+                const selectedDelayVal = document.getElementById('bulk-send-delay')?.value || 'adaptive';
+                let delayMs = 15000;
+                let isResting = false;
+                
+                if (selectedDelayVal === 'adaptive') {
+                    const adaptiveObj = getAdaptiveDelay(selected.length, i + 1);
+                    delayMs = adaptiveObj.delay;
+                    isResting = adaptiveObj.restingBreak;
+                } else {
+                    const baseDelay = parseInt(selectedDelayVal) || 15000;
+                    // Add a small +- 2s random jitter to avoid robotic intervals
+                    const jitter = (Math.random() * 4000) - 2000;
+                    delayMs = Math.max(2000, baseDelay + jitter);
+                }
+                
+                let secondsLeft = Math.round(delayMs / 1000);
+                while (secondsLeft > 0) {
+                    const breakMsg = isResting ? " (Resting break to avoid spam block)" : "";
+                    progressText.innerText = `Sent report card for ${name} (${i + 1}/${selected.length}). Waiting ${secondsLeft}s before next...${breakMsg}`;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    secondsLeft--;
+                }
+            }
         }
 
         progressText.innerText = `Completed! Sent: ${successCount}, Failed: ${failCount}`;
