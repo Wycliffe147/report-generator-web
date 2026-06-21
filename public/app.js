@@ -1047,27 +1047,53 @@ function setupWhatsAppStatusPolling() {
         const statusSpan = document.getElementById('whatsapp-status');
         statusSpan.innerText = data.status;
         
+        const logoutBtn = document.getElementById('whatsapp-logout-btn');
+        
         if (data.status === "Connected") {
             statusSpan.className = "statusConnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
             document.getElementById('qr-placeholder').innerText = "✅ WhatsApp Connected!";
+            logoutBtn.style.display = 'block';
         } else if (data.status === "Scan QR Code" && data.qr) {
             statusSpan.className = "statusPending";
             document.getElementById('qr-image').style.display = 'block';
             document.getElementById('qr-image').src = data.qr;
             document.getElementById('qr-placeholder').style.display = 'none';
+            logoutBtn.style.display = 'block';
         } else {
             statusSpan.className = "statusDisconnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
             document.getElementById('qr-placeholder').innerText = "Waiting for WhatsApp connection setup...";
+            logoutBtn.style.display = 'none';
         }
     };
     
     checkStatus();
     statusInterval = setInterval(checkStatus, 3000);
 }
+
+document.getElementById('whatsapp-logout-btn').addEventListener('click', async () => {
+    const confirmed = confirm("Are you sure you want to disconnect and reset your WhatsApp connection?");
+    if (!confirmed) return;
+    const btn = document.getElementById('whatsapp-logout-btn');
+    btn.innerText = "Disconnecting...";
+    btn.disabled = true;
+    try {
+        const res = await apiFetch('/api/whatsapp/logout', { method: 'POST' });
+        if (res.ok) {
+            alert("WhatsApp connection successfully reset.");
+        } else {
+            alert("Error resetting connection.");
+        }
+    } catch(e) {
+        alert("Failed to disconnect.");
+    } finally {
+        btn.innerText = "Disconnect / Reset Connection";
+        btn.disabled = false;
+    }
+});
 
 // Bulk Send Report Cards
 document.getElementById('send-all-btn').addEventListener('click', async () => {

@@ -1065,6 +1065,21 @@ async function useMongoDBAuthState(collection) {
     };
 }
 
+async function clearWhatsAppAuth(schoolId) {
+    if (mongoDb) {
+        try {
+            await mongoDb.collection(`whatsapp_auth_${schoolId}`).drop();
+        } catch (_) {}
+    } else {
+        const dir = `auth_info_baileys_${schoolId}`;
+        if (fs.existsSync(dir)) {
+            try {
+                fs.rmSync(dir, { recursive: true, force: true });
+            } catch (_) {}
+        }
+    }
+}
+
 async function connectToWhatsApp(schoolId = 'default') {
     // Disconnect existing session for this school if any
     if (waSocks[schoolId]) {
@@ -1111,7 +1126,8 @@ async function connectToWhatsApp(schoolId = 'default') {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             waStatuses[schoolId] = 'Disconnected';
             waQrImages[schoolId] = null;
             delete waSocks[schoolId];
@@ -1119,7 +1135,8 @@ async function connectToWhatsApp(schoolId = 'default') {
                 console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
                 connectToWhatsApp(schoolId);
             } else {
-                console.log(`[WhatsApp:${schoolId}] Logged out — will not auto-reconnect.`);
+                console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
+                await clearWhatsAppAuth(schoolId);
             }
         } else if (connection === 'open') {
             waStatuses[schoolId] = 'Connected';
@@ -1144,6 +1161,22 @@ app.get('/api/whatsapp/status', (req, res) => {
         status: waStatuses[schoolId] || 'Disconnected',
         qr: waQrImages[schoolId] || null
     });
+});
+
+app.post('/api/whatsapp/logout', async (req, res) => {
+    const schoolId = req.user ? req.user.schoolId : 'default';
+    waStatuses[schoolId] = 'Disconnected';
+    waQrImages[schoolId] = null;
+    if (waSocks[schoolId]) {
+        try {
+            await waSocks[schoolId].logout();
+        } catch (e) {
+            try { waSocks[schoolId].end(undefined); } catch (_) {}
+        }
+        delete waSocks[schoolId];
+    }
+    await clearWhatsAppAuth(schoolId);
+    res.json({ success: true });
 });
 
 app.post('/api/whatsapp/send', async (req, res) => {
