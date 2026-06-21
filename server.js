@@ -560,10 +560,14 @@ app.get('/api/students', (req, res) => {
     if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
         const teacherSubjects = req.user.subjects || [];
         // Show students who are ENROLLED in at least one of the teacher's subjects
-        // Check key existence (s.subjects[sub] !== undefined) not truthiness,
-        // so students with no marks yet are still visible
         ranked = ranked.filter(s =>
-            teacherSubjects.some(sub => s.subjects && sub in s.subjects)
+            teacherSubjects.some(sub => {
+                if (sub.includes(':')) {
+                    const [classLevel, subjectName] = sub.split(':');
+                    return (s.classLevel || 'Form 1') === classLevel && s.subjects && s.subjects[subjectName] === true;
+                }
+                return s.subjects && s.subjects[sub] === true;
+            })
         );
     }
     res.json(ranked);
@@ -649,11 +653,19 @@ app.post('/api/marks', (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
     const { id, marks } = req.body;
     
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+        const student = db.students.find(s => s.id === id);
+        if (!student) {
+            return res.status(404).json({ error: "Student not found" });
+        }
+        const studentClass = student.classLevel || 'Form 1';
         const teacherSubjects = req.user.subjects || [];
         for (let sub of Object.keys(marks)) {
-            if (marks[sub] !== undefined && marks[sub] !== '' && !teacherSubjects.includes(sub)) {
-                return res.status(403).json({ error: "Unauthorized to edit subject: " + sub });
+            if (marks[sub] !== undefined && marks[sub] !== '') {
+                const expectedKey = `${studentClass}:${sub}`;
+                if (!teacherSubjects.includes(expectedKey) && !teacherSubjects.includes(sub)) {
+                    return res.status(403).json({ error: "Unauthorized to edit subject: " + sub });
+                }
             }
         }
     }
