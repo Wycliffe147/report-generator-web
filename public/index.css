@@ -333,21 +333,40 @@ td input[type="number"]:disabled {
 }
 
 /* Checkbox labels inside staff subjects must not inherit block/full-width rules */
+#staff-subjects-checkboxes {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+    gap: 10px !important;
+}
+
 #staff-subjects-checkboxes label {
     display: flex !important;
     align-items: center !important;
     gap: 8px;
-    margin-bottom: 6px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     cursor: pointer;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
+    font-size: 0.85rem;
+    color: var(--text-primary) !important;
+    transition: all 0.2s ease;
+    user-select: none;
+    margin-bottom: 0 !important;
+}
+
+#staff-subjects-checkboxes label:hover {
+    border-color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.1);
 }
 
 #staff-subjects-checkboxes input[type="checkbox"] {
-    width: auto !important;
+    width: 16px !important;
+    height: 16px !important;
+    margin: 0 !important;
     padding: 0 !important;
-    background: none !important;
-    border: revert !important;
+    cursor: pointer;
+    accent-color: var(--accent-blue);
     flex-shrink: 0;
 }
 
