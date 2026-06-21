@@ -120,10 +120,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const u = document.getElementById('login-username').value;
     const p = document.getElementById('login-password').value;
+    const schoolId = document.getElementById('login-school').value;
     const res = await fetch('/api/login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username: u, password: p, schoolId: document.getElementById('login-school').value})
+        body: JSON.stringify({ username: u, password: p, schoolId })
     });
     if (res.ok) {
         const data = await res.json();
@@ -134,37 +135,87 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         document.getElementById('login-error').style.display = 'none';
         checkLogin();
     } else {
-        document.getElementById('login-error').innerText = "Invalid credentials";
+        document.getElementById('login-error').innerText = 'Invalid credentials. Please try again.';
         document.getElementById('login-error').style.display = 'block';
     }
 });
-// Fetch available schools for login dropdown
-async function loadSchoolOptions() {
-  try {
-    const res = await fetch('/api/public/schools');
-    if (!res.ok) throw new Error('Failed to load schools');
-    const schools = await res.json();
-    const select = document.getElementById('login-school');
-    select.innerHTML = '<option value="" disabled selected>Select your school</option>';
-    schools.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.schoolId;
-      opt.textContent = s.schoolName;
-      select.appendChild(opt);
+
+// ── Two-step Login: School picker ─────────────────────────────────
+let allSchools = []; // cached school list
+
+function renderSchoolList(filter = '') {
+    const list = document.getElementById('school-list');
+    const q = filter.trim().toLowerCase();
+
+    // Build display list: matching schools + Super Admin always at bottom
+    const matched = allSchools.filter(s => !q || s.schoolName.toLowerCase().includes(q));
+
+    list.innerHTML = '';
+
+    if (matched.length === 0 && q) {
+        list.innerHTML = '<p class="subtitle" style="text-align:center;padding:14px;">No schools found.</p>';
+    }
+
+    matched.forEach(s => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'school-pick-btn';
+        btn.innerHTML = `
+            <span class="school-pick-icon">🏫</span>
+            <span class="school-pick-name">${s.schoolName}</span>
+            <span class="school-pick-arrow">›</span>
+        `;
+        btn.addEventListener('click', () => selectSchool(s.schoolId, s.schoolName));
+        list.appendChild(btn);
     });
-    // Always append Super Admin option at the bottom
-    const saOpt = document.createElement('option');
-    saOpt.value = 'superadmin';
-    saOpt.textContent = '🔑 Super Admin';
-    select.appendChild(saOpt);
-  } catch (e) {
-    // If fetch fails, at least keep Super Admin option
-    const select = document.getElementById('login-school');
-    select.innerHTML = '<option value="" disabled selected>Select your school</option><option value="superadmin">🔑 Super Admin</option>';
-    console.error(e);
-  }
+
+    // Super Admin always visible (no search filter on it)
+    if (!q || 'super admin'.includes(q)) {
+        const saBtn = document.createElement('button');
+        saBtn.type = 'button';
+        saBtn.className = 'school-pick-btn school-pick-superadmin';
+        saBtn.innerHTML = `
+            <span class="school-pick-icon">🔑</span>
+            <span class="school-pick-name">Super Admin</span>
+            <span class="school-pick-arrow">›</span>
+        `;
+        saBtn.addEventListener('click', () => selectSchool('superadmin', '🔑 Super Admin'));
+        list.appendChild(saBtn);
+    }
 }
-// Populate schools on page load
+
+function selectSchool(schoolId, schoolName) {
+    document.getElementById('login-school').value = schoolId;
+    document.getElementById('login-school-label').textContent = schoolName;
+    document.getElementById('login-step-1').style.display = 'none';
+    document.getElementById('login-step-2').style.display = 'block';
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-error').style.display = 'none';
+    setTimeout(() => document.getElementById('login-username').focus(), 50);
+}
+
+document.getElementById('login-back-btn').addEventListener('click', () => {
+    document.getElementById('login-step-2').style.display = 'none';
+    document.getElementById('login-step-1').style.display = 'block';
+    document.getElementById('school-search').focus();
+});
+
+document.getElementById('school-search').addEventListener('input', (e) => {
+    renderSchoolList(e.target.value);
+});
+
+async function loadSchoolOptions() {
+    try {
+        const res = await fetch('/api/public/schools');
+        if (!res.ok) throw new Error('Failed');
+        allSchools = await res.json();
+    } catch (e) {
+        allSchools = [];
+        console.error('Could not load schools:', e);
+    }
+    renderSchoolList();
+}
 loadSchoolOptions();
 
 document.getElementById('logout-btn').addEventListener('click', handleLogout);

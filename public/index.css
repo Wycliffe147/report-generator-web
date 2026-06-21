@@ -350,3 +350,63 @@ td input[type="number"]:disabled {
     border: revert !important;
     flex-shrink: 0;
 }
+
+/* ── Two-step Login: School picker cards ── */
+.school-pick-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: background 0.18s, border-color 0.18s, transform 0.12s;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    text-align: left;
+}
+
+.school-pick-btn:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+    transform: translateX(3px);
+}
+
+.school-pick-btn:hover .school-pick-arrow {
+    color: white;
+}
+
+.school-pick-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.school-pick-name {
+    flex: 1;
+    font-weight: 600;
+}
+
+.school-pick-arrow {
+    font-size: 1.3rem;
+    color: var(--text-secondary);
+    transition: color 0.18s;
+}
+
+.school-pick-superadmin {
+    border-color: #f59e0b;
+    margin-top: 4px;
+}
+
+.school-pick-superadmin:hover {
+    background: #f59e0b;
+    border-color: #f59e0b;
+}
+
+/* School list scrollbar */
+#school-list::-webkit-scrollbar { width: 5px; }
+#school-list::-webkit-scrollbar-track { background: transparent; }
+#school-list::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }

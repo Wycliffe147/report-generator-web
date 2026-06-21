@@ -9,25 +9,51 @@
 </head>
 <body>
     <div id="login-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:9999; display:flex; justify-content:center; align-items:center;">
-        <div class="card form-card" style="width: 400px; text-align: center;">
-            <h2>Excel Academy Login</h2>
-            <form id="login-form" style="margin-top: 20px;">
-                <div class="input-group">
-                    <label for="login-school">School</label>
-                    <select id="login-school" style="width: 100%; margin-bottom: 15px;">
-                        <option value="" disabled selected>Loading schools...</option>
-                        <option value="superadmin">🔑 Super Admin</option>
-                    </select>
+        <div class="card form-card" style="width:440px; text-align:center;">
+
+            <!-- Step 1: School Picker -->
+            <div id="login-step-1">
+                <h2 style="margin-bottom:6px;">Welcome</h2>
+                <p class="subtitle" style="margin-bottom:20px;">Select your school to continue</p>
+
+                <!-- Search bar -->
+                <div style="position:relative; margin-bottom:16px;">
+                    <input type="text" id="school-search" placeholder="🔍  Search schools..." autocomplete="off"
+                        style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid var(--border-color); font-size:0.95rem; background:var(--bg-secondary); color:var(--text-primary); box-sizing:border-box;">
                 </div>
-                <div class="input-group">
-                    <input type="text" id="login-username" placeholder="Username" required style="width: 100%; margin-bottom: 15px;">
+
+                <!-- School list -->
+                <div id="school-list" style="display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto; text-align:left;">
+                    <p class="subtitle" style="text-align:center; padding:10px;">Loading schools...</p>
                 </div>
-                <div class="input-group">
-                    <input type="password" id="login-password" placeholder="Password" required style="width: 100%; margin-bottom: 20px;">
+            </div>
+
+            <!-- Step 2: Credentials (hidden until school selected) -->
+            <div id="login-step-2" style="display:none;">
+                <!-- Back button + school name -->
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+                    <button type="button" id="login-back-btn" style="background:none; border:none; cursor:pointer; font-size:1.3rem; color:var(--primary-color); padding:0;">←</button>
+                    <div style="text-align:left;">
+                        <p style="font-size:0.78rem; color:var(--text-secondary); margin:0;">Logging into</p>
+                        <p id="login-school-label" style="font-weight:700; font-size:1rem; margin:0; color:var(--text-primary);"></p>
+                    </div>
                 </div>
-                <button type="submit" class="btn primary-btn" style="width: 100%;">Login</button>
-                <p id="login-error" style="color: red; margin-top: 10px; display: none;"></p>
-            </form>
+
+                <form id="login-form">
+                    <input type="hidden" id="login-school">
+                    <div class="input-group" style="margin-bottom:14px; text-align:left;">
+                        <label>Username</label>
+                        <input type="text" id="login-username" placeholder="Enter username" required style="width:100%;">
+                    </div>
+                    <div class="input-group" style="margin-bottom:20px; text-align:left;">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="Enter password" required style="width:100%;">
+                    </div>
+                    <button type="submit" class="btn primary-btn" style="width:100%;">Login</button>
+                    <p id="login-error" style="color:red; margin-top:10px; display:none;"></p>
+                </form>
+            </div>
+
         </div>
     </div>
     <div class="app-container" id="main-app" style="display:none;">
