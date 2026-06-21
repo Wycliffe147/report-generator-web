@@ -148,8 +148,9 @@ function readDb(schoolId = 'default') {
     }
     schoolData.subjects = schoolData.settings.masterSubjects.filter(s => s.active).map(s => s.name);
     
-    // Inject users into the returned object for compatibility, filtering by schoolId
-    schoolData.users = dbCache.users.filter(u => u.schoolId === schoolId || u.role === 'superadmin');
+    // Inject users into the returned object for compatibility, filtering by schoolId only
+    // Superadmin is a global account and must NOT appear in any school's staff list
+    schoolData.users = dbCache.users.filter(u => u.schoolId === schoolId && u.role !== 'superadmin');
     schoolData.allUsers = dbCache.users; // global reference
     
     return schoolData;
@@ -477,7 +478,10 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
 
 app.get('/api/users', requireAdmin, (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
-    const safeUsers = db.users.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects, password: u.password }));
+    // Exclude superadmin accounts from school staff lists
+    const safeUsers = db.users
+        .filter(u => u.role !== 'superadmin')
+        .map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects, password: u.password }));
     res.json(safeUsers);
 });
 
