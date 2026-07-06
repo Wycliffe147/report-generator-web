@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 const { ZipArchive } = require('archiver');
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 // Prevent Baileys timeouts from crashing the server
 process.on('unhandledRejection', (reason, promise) => {
