@@ -1394,7 +1394,11 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 // problem — not the network. Reconnecting with the same (corrupted/stale) auth
                 // state just repeats the same failed handshake indefinitely. For these, wipe
                 // the auth state first so the next attempt starts a clean QR/pairing flow.
-                const isCorruptedSession = statusCode === DisconnectReason.badSession
+                // A 401/badSession close right after (or during) issuing a pairing code is
+                // Baileys' normal internal restart, not a corrupted session — don't wipe the
+                // creds or drop the code the user is currently trying to enter. Still treat a
+                // genuine multideviceMismatch as corrupted regardless of pairing state.
+                const isCorruptedSession = (statusCode === DisconnectReason.badSession && !midPairing)
                     || statusCode === DisconnectReason.multideviceMismatch;
 
                 if (isCorruptedSession) {
