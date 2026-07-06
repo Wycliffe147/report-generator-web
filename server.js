@@ -1225,11 +1225,16 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
 
         const { version } = await fetchLatestBaileysVersion();
 
-        // Pairing-code login only makes sense while this session hasn't been registered yet,
-        // and only on the FIRST connection attempt for this request — Baileys does a normal
-        // internal restart shortly after issuing a code, and re-requesting on that reconnect
-        // would generate a brand new code and invalidate the one the user is about to enter.
-        const usePairing = method === 'pairing' && !!phoneNumber && !state.creds.registered && !waPairingRequested[schoolId];
+        // Pairing-code login only makes sense while this session hasn't been registered yet.
+        // Baileys does a normal internal restart shortly after issuing a code — the socket
+        // gets torn down and a brand new one created for the SAME logical pairing attempt.
+        // `isPairingFlow` stays true across that restart (so the browser identity and the
+        // "ignore internal qr events" behavior stay consistent on the reconnected socket too).
+        // `usePairing` narrows that down to "should THIS socket actually fire a new request" —
+        // only true once, on the very first socket, since re-requesting on the reconnect would
+        // generate a brand new code and invalidate the one the user is about to enter.
+        const isPairingFlow = method === 'pairing' && !!phoneNumber && !state.creds.registered;
+        const usePairing = isPairingFlow && !waPairingRequested[schoolId];
 
         const sock = makeWASocket({
             version,
@@ -1242,7 +1247,10 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             // ['Chrome (Linux)', '', ''], which crams everything into the OS slot and leaves the
             // browser name/version empty) causes WhatsApp to reject the pairing request outright.
             // Browsers.ubuntu('Chrome') produces the correct ['Ubuntu', 'Chrome', '<version>'] shape.
-            ...(usePairing ? { browser: Browsers.ubuntu('Chrome') } : {}),
+            // Uses isPairingFlow (not usePairing) so the reconnected socket keeps presenting the
+            // same browser identity WhatsApp saw when the code was issued — using the default
+            // browser here instead would make WhatsApp treat it as a different client.
+            ...(isPairingFlow ? { browser: Browsers.ubuntu('Chrome') } : {}),
             logger: pino({ level: 'silent' })
         });
 
@@ -1338,7 +1346,11 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
 
             // Only show the QR code when this session is using the QR login method.
             // In pairing-code mode Baileys may still emit a qr event internally; ignore it.
-            if (qr && !usePairing) {
+            // Uses isPairingFlow (not usePairing) — otherwise, on the reconnected socket after
+            // a code has already been issued, usePairing is false, this check would fail, and
+            // the internal qr event would overwrite the status to "Scan QR Code", hiding the
+            // pairing code the user was just given (the "fight" between the two flows).
+            if (qr && !isPairingFlow) {
                 waStatuses[schoolId] = 'Scan QR Code';
                 try {
                     waQrImages[schoolId] = await QRCode.toDataURL(qr);
@@ -1356,7 +1368,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 // Don't wipe an in-progress pairing code just because Baileys did its normal
                 // internal restart after issuing it — keep it on screen until it either
                 // succeeds, is replaced by an explicit new request, or the account logs out.
-                const midPairing = usePairing || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
+                const midPairing = isPairingFlow || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
 
                 // WhatsApp sometimes issues a pairing code successfully, then closes the
                 // connection ~1s later with a 429/"rate-overlimit" error. This wouldn't have
