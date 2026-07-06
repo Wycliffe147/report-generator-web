@@ -4,3 +4,5 @@ reports/*.pdf
 db.json
 .DS_Store
 uploads/
+auth_info_baileys_*/
+auth_info_baileys_*/

@@ -1004,6 +1004,7 @@ const waSocks = {};           // sock per school
 const waQrImages = {};        // qr data URL per school
 const waStatuses = {};        // connection status per school
 const waPairingCodes = {};    // phone-number pairing code per school
+const waConnecting = {};      // lock: true while a connection attempt is in flight for a school
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -1082,105 +1083,123 @@ async function clearWhatsAppAuth(schoolId) {
 }
 
 async function connectToWhatsApp(schoolId = 'default', opts = {}) {
+    // Prevent two overlapping connection attempts for the same school — this was
+    // causing the QR/pairing session to be torn down and recreated in a loop.
+    if (waConnecting[schoolId]) {
+        console.log(`[WhatsApp:${schoolId}] Connection attempt already in progress, skipping duplicate call.`);
+        return;
+    }
+    waConnecting[schoolId] = true;
+
     const { method = 'qr', phoneNumber = null } = opts;
 
-    // Disconnect existing session for this school if any
-    if (waSocks[schoolId]) {
-        try { waSocks[schoolId].end(undefined); } catch(_) {}
-        delete waSocks[schoolId];
-    }
-
-    let state, saveCreds;
-    if (mongoDb) {
-        // Each school gets its own MongoDB collection for auth
-        const collection = mongoDb.collection(`whatsapp_auth_${schoolId}`);
-        ({ state, saveCreds } = await useMongoDBAuthState(collection));
-    } else {
-        // Each school gets its own local auth folder
-        ({ state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys_${schoolId}`));
-    }
-
-    const { version } = await fetchLatestBaileysVersion();
-
-    // Pairing-code login only makes sense while this session hasn't been registered yet
-    const usePairing = method === 'pairing' && !!phoneNumber && !state.creds.registered;
-
-    const sock = makeWASocket({
-        version,
-        auth: state,
-        printQRInTerminal: false,
-        syncFullHistory: false,
-        markOnlineOnConnect: false,
-        browser: usePairing ? ['Chrome (Linux)', '', ''] : undefined,
-        logger: pino({ level: 'silent' })
-    });
-
-    waSocks[schoolId] = sock;
-    waStatuses[schoolId] = 'Disconnected';
-    waQrImages[schoolId] = null;
-    waPairingCodes[schoolId] = null;
-
-    // If the caller asked for phone-number pairing and this session isn't registered yet,
-    // request a pairing code instead of waiting for a QR scan.
-    if (usePairing) {
-        try {
-            const cleanNumber = phoneNumber.replace(/\D/g, '');
-            const code = await sock.requestPairingCode(cleanNumber);
-            waPairingCodes[schoolId] = code;
-            waStatuses[schoolId] = 'Enter Pairing Code';
-            console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
-        } catch (e) {
-            console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
-            waStatuses[schoolId] = 'Disconnected';
-        }
-    }
-
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
-
-        // Only show the QR code when this session is using the QR login method.
-        // In pairing-code mode Baileys may still emit a qr event internally; ignore it.
-        if (qr && !usePairing) {
-            waStatuses[schoolId] = 'Scan QR Code';
-            try {
-                waQrImages[schoolId] = await QRCode.toDataURL(qr);
-            } catch (e) {
-                console.error(`[WhatsApp:${schoolId}] Failed to generate QR:`, e);
-            }
-        }
-
-        if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            waStatuses[schoolId] = 'Disconnected';
-            waQrImages[schoolId] = null;
-            waPairingCodes[schoolId] = null;
+    try {
+        // Disconnect existing session for this school if any
+        if (waSocks[schoolId]) {
+            try { waSocks[schoolId].end(undefined); } catch(_) {}
             delete waSocks[schoolId];
-            if (shouldReconnect) {
-                console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
-                connectToWhatsApp(schoolId);
-            } else {
-                console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
-                await clearWhatsAppAuth(schoolId);
-            }
-        } else if (connection === 'open') {
-            waStatuses[schoolId] = 'Connected';
-            waQrImages[schoolId] = null;
-            waPairingCodes[schoolId] = null;
-            console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
         }
-    });
 
-    sock.ev.on('creds.update', saveCreds);
+        let state, saveCreds;
+        if (mongoDb) {
+            // Each school gets its own MongoDB collection for auth
+            const collection = mongoDb.collection(`whatsapp_auth_${schoolId}`);
+            ({ state, saveCreds } = await useMongoDBAuthState(collection));
+        } else {
+            // Each school gets its own local auth folder
+            ({ state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys_${schoolId}`));
+        }
+
+        const { version } = await fetchLatestBaileysVersion();
+
+        // Pairing-code login only makes sense while this session hasn't been registered yet
+        const usePairing = method === 'pairing' && !!phoneNumber && !state.creds.registered;
+
+        const sock = makeWASocket({
+            version,
+            auth: state,
+            printQRInTerminal: false,
+            syncFullHistory: false,
+            markOnlineOnConnect: false,
+            browser: usePairing ? ['Chrome (Linux)', '', ''] : undefined,
+            logger: pino({ level: 'silent' })
+        });
+
+        waSocks[schoolId] = sock;
+        waStatuses[schoolId] = 'Disconnected';
+        waQrImages[schoolId] = null;
+        waPairingCodes[schoolId] = null;
+
+        // Socket now exists, so the status endpoint's auto-start check will no
+        // longer trigger a duplicate session — safe to release the lock here.
+        waConnecting[schoolId] = false;
+
+        // If the caller asked for phone-number pairing and this session isn't registered yet,
+        // request a pairing code instead of waiting for a QR scan.
+        if (usePairing) {
+            try {
+                const cleanNumber = phoneNumber.replace(/\D/g, '');
+                const code = await sock.requestPairingCode(cleanNumber);
+                waPairingCodes[schoolId] = code;
+                waStatuses[schoolId] = 'Enter Pairing Code';
+                console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
+            } catch (e) {
+                console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
+                waStatuses[schoolId] = 'Disconnected';
+            }
+        }
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
+            console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
+
+            // Only show the QR code when this session is using the QR login method.
+            // In pairing-code mode Baileys may still emit a qr event internally; ignore it.
+            if (qr && !usePairing) {
+                waStatuses[schoolId] = 'Scan QR Code';
+                try {
+                    waQrImages[schoolId] = await QRCode.toDataURL(qr);
+                } catch (e) {
+                    console.error(`[WhatsApp:${schoolId}] Failed to generate QR:`, e);
+                }
+            }
+
+            if (connection === 'close') {
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                waStatuses[schoolId] = 'Disconnected';
+                waQrImages[schoolId] = null;
+                waPairingCodes[schoolId] = null;
+                delete waSocks[schoolId];
+                if (shouldReconnect) {
+                    console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
+                    connectToWhatsApp(schoolId);
+                } else {
+                    console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
+                    await clearWhatsAppAuth(schoolId);
+                }
+            } else if (connection === 'open') {
+                waStatuses[schoolId] = 'Connected';
+                waQrImages[schoolId] = null;
+                waPairingCodes[schoolId] = null;
+                console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
+            }
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+    } catch (e) {
+        console.error(`[WhatsApp:${schoolId}] Failed to establish connection:`, e);
+        waStatuses[schoolId] = 'Disconnected';
+        waConnecting[schoolId] = false;
+    }
 }
 
 // WhatsApp service is started after initDB inside app.listen block
 
 app.get('/api/whatsapp/status', (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
-    // Auto-start a session for this school if none exists yet (defaults to QR login)
-    if (!waSocks[schoolId] && waStatuses[schoolId] !== 'Connecting') {
+    // Auto-start a session for this school if none exists yet and nothing is already in flight
+    if (!waSocks[schoolId] && !waConnecting[schoolId] && waStatuses[schoolId] !== 'Connecting') {
         waStatuses[schoolId] = 'Connecting';
         connectToWhatsApp(schoolId, { method: 'qr' });
     }
