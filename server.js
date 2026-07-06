@@ -1003,6 +1003,7 @@ app.get('/api/preview-pdf/:id', async (req, res) => {
 const waSocks = {};           // sock per school
 const waQrImages = {};        // qr data URL per school
 const waStatuses = {};        // connection status per school
+const waPairingCodes = {};    // phone-number pairing code per school
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -1080,7 +1081,9 @@ async function clearWhatsAppAuth(schoolId) {
     }
 }
 
-async function connectToWhatsApp(schoolId = 'default') {
+async function connectToWhatsApp(schoolId = 'default', opts = {}) {
+    const { method = 'qr', phoneNumber = null } = opts;
+
     // Disconnect existing session for this school if any
     if (waSocks[schoolId]) {
         try { waSocks[schoolId].end(undefined); } catch(_) {}
@@ -1099,24 +1102,46 @@ async function connectToWhatsApp(schoolId = 'default') {
 
     const { version } = await fetchLatestBaileysVersion();
 
+    // Pairing-code login only makes sense while this session hasn't been registered yet
+    const usePairing = method === 'pairing' && !!phoneNumber && !state.creds.registered;
+
     const sock = makeWASocket({
         version,
         auth: state,
         printQRInTerminal: false,
         syncFullHistory: false,
         markOnlineOnConnect: false,
+        browser: usePairing ? ['Chrome (Linux)', '', ''] : undefined,
         logger: pino({ level: 'silent' })
     });
 
     waSocks[schoolId] = sock;
     waStatuses[schoolId] = 'Disconnected';
     waQrImages[schoolId] = null;
+    waPairingCodes[schoolId] = null;
+
+    // If the caller asked for phone-number pairing and this session isn't registered yet,
+    // request a pairing code instead of waiting for a QR scan.
+    if (usePairing) {
+        try {
+            const cleanNumber = phoneNumber.replace(/\D/g, '');
+            const code = await sock.requestPairingCode(cleanNumber);
+            waPairingCodes[schoolId] = code;
+            waStatuses[schoolId] = 'Enter Pairing Code';
+            console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
+        } catch (e) {
+            console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
+            waStatuses[schoolId] = 'Disconnected';
+        }
+    }
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
 
-        if (qr) {
+        // Only show the QR code when this session is using the QR login method.
+        // In pairing-code mode Baileys may still emit a qr event internally; ignore it.
+        if (qr && !usePairing) {
             waStatuses[schoolId] = 'Scan QR Code';
             try {
                 waQrImages[schoolId] = await QRCode.toDataURL(qr);
@@ -1130,6 +1155,7 @@ async function connectToWhatsApp(schoolId = 'default') {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             waStatuses[schoolId] = 'Disconnected';
             waQrImages[schoolId] = null;
+            waPairingCodes[schoolId] = null;
             delete waSocks[schoolId];
             if (shouldReconnect) {
                 console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
@@ -1141,6 +1167,7 @@ async function connectToWhatsApp(schoolId = 'default') {
         } else if (connection === 'open') {
             waStatuses[schoolId] = 'Connected';
             waQrImages[schoolId] = null;
+            waPairingCodes[schoolId] = null;
             console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
         }
     });
@@ -1152,15 +1179,35 @@ async function connectToWhatsApp(schoolId = 'default') {
 
 app.get('/api/whatsapp/status', (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
-    // Auto-start a session for this school if none exists yet
+    // Auto-start a session for this school if none exists yet (defaults to QR login)
     if (!waSocks[schoolId] && waStatuses[schoolId] !== 'Connecting') {
         waStatuses[schoolId] = 'Connecting';
-        connectToWhatsApp(schoolId);
+        connectToWhatsApp(schoolId, { method: 'qr' });
     }
     res.json({
         status: waStatuses[schoolId] || 'Disconnected',
-        qr: waQrImages[schoolId] || null
+        qr: waQrImages[schoolId] || null,
+        pairingCode: waPairingCodes[schoolId] || null
     });
+});
+
+// Explicitly (re)start a WhatsApp session with a chosen login method.
+// method: 'qr' (default) or 'pairing' (requires phoneNumber, e.g. "265991234567")
+app.post('/api/whatsapp/connect', async (req, res) => {
+    const schoolId = req.user ? req.user.schoolId : 'default';
+    const { method, phoneNumber } = req.body || {};
+
+    if (method === 'pairing' && (!phoneNumber || !phoneNumber.replace(/\D/g, ''))) {
+        return res.status(400).json({ error: 'Please provide a valid phone number with country code.' });
+    }
+
+    waStatuses[schoolId] = 'Connecting';
+    waQrImages[schoolId] = null;
+    waPairingCodes[schoolId] = null;
+
+    connectToWhatsApp(schoolId, { method: method === 'pairing' ? 'pairing' : 'qr', phoneNumber });
+
+    res.json({ success: true });
 });
 
 app.post('/api/whatsapp/logout', async (req, res) => {

@@ -1060,9 +1060,32 @@ async function renderRankingsTab() {
 
 // 4. WhatsApp Status & Bulk Actions
 let statusInterval = null;
+let waSelectedMethod = 'qr'; // 'qr' or 'pairing' — which panel is active in the UI
+
+function setWhatsAppMethodUI(method) {
+    waSelectedMethod = method;
+    const qrBtn = document.getElementById('method-qr-btn');
+    const phoneBtn = document.getElementById('method-phone-btn');
+    const qrPanel = document.getElementById('qr-method-panel');
+    const phonePanel = document.getElementById('phone-method-panel');
+
+    if (method === 'pairing') {
+        qrPanel.style.display = 'none';
+        phonePanel.style.display = 'block';
+        phoneBtn.style.opacity = '1';
+        qrBtn.style.opacity = '0.6';
+    } else {
+        qrPanel.style.display = 'block';
+        phonePanel.style.display = 'none';
+        qrBtn.style.opacity = '1';
+        phoneBtn.style.opacity = '0.6';
+    }
+}
+
 function setupWhatsAppStatusPolling() {
     if (statusInterval) clearInterval(statusInterval);
-    
+    setWhatsAppMethodUI(waSelectedMethod);
+
     const checkStatus = async () => {
         const res = await apiFetch('/api/whatsapp/status');
         const data = await res.json();
@@ -1071,24 +1094,34 @@ function setupWhatsAppStatusPolling() {
         statusSpan.innerText = data.status;
         
         const logoutBtn = document.getElementById('whatsapp-logout-btn');
+        const pairingDisplay = document.getElementById('pairing-code-display');
+        const pairingValue = document.getElementById('pairing-code-value');
         
         if (data.status === "Connected") {
             statusSpan.className = "statusConnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
             document.getElementById('qr-placeholder').innerText = "✅ WhatsApp Connected!";
+            pairingDisplay.style.display = 'none';
             logoutBtn.style.display = 'block';
         } else if (data.status === "Scan QR Code" && data.qr) {
             statusSpan.className = "statusPending";
             document.getElementById('qr-image').style.display = 'block';
             document.getElementById('qr-image').src = data.qr;
             document.getElementById('qr-placeholder').style.display = 'none';
+            pairingDisplay.style.display = 'none';
+            logoutBtn.style.display = 'block';
+        } else if (data.status === "Enter Pairing Code" && data.pairingCode) {
+            statusSpan.className = "statusPending";
+            pairingValue.innerText = data.pairingCode;
+            pairingDisplay.style.display = 'block';
             logoutBtn.style.display = 'block';
         } else {
             statusSpan.className = "statusDisconnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
             document.getElementById('qr-placeholder').innerText = "Waiting for WhatsApp connection setup...";
+            pairingDisplay.style.display = 'none';
             logoutBtn.style.display = 'none';
         }
     };
@@ -1096,6 +1129,47 @@ function setupWhatsAppStatusPolling() {
     checkStatus();
     statusInterval = setInterval(checkStatus, 3000);
 }
+
+document.getElementById('method-qr-btn').addEventListener('click', async () => {
+    setWhatsAppMethodUI('qr');
+    await apiFetch('/api/whatsapp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'qr' })
+    });
+});
+
+document.getElementById('method-phone-btn').addEventListener('click', () => {
+    setWhatsAppMethodUI('pairing');
+});
+
+document.getElementById('request-pairing-code-btn').addEventListener('click', async () => {
+    const input = document.getElementById('wa-phone-number');
+    const phoneNumber = input.value.replace(/\D/g, '');
+    if (!phoneNumber) {
+        alert('Please enter a valid WhatsApp number with country code (digits only).');
+        return;
+    }
+    const btn = document.getElementById('request-pairing-code-btn');
+    btn.disabled = true;
+    btn.innerText = 'Requesting code...';
+    try {
+        const res = await apiFetch('/api/whatsapp/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ method: 'pairing', phoneNumber })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert(data.error || 'Failed to request pairing code.');
+        }
+    } catch (e) {
+        alert('Failed to request pairing code.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Get Pairing Code';
+    }
+});
 
 document.getElementById('whatsapp-logout-btn').addEventListener('click', async () => {
     const confirmed = confirm("Are you sure you want to disconnect and reset your WhatsApp connection?");
