@@ -1206,9 +1206,20 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
         // longer trigger a duplicate session — safe to release the lock here.
         waConnecting[schoolId] = false;
 
-        // If the caller asked for phone-number pairing and this session isn't registered yet,
-        // request a pairing code instead of waiting for a QR scan.
-        if (usePairing) {
+        // requestPairingCode() must NOT be called immediately after makeWASocket() returns —
+        // the underlying WebSocket has only just started connecting and isn't ready to accept
+        // it yet, which reliably throws a "Connection Closed" (428) error. Per Baileys' own
+        // docs, we instead wait for the connection.update event to report "connecting" (or emit
+        // a qr string) before requesting a code — that's the earliest point the socket is
+        // actually able to handle the request.
+        let pairingAttempted = false;
+        let pairingSafetyTimer = null;
+
+        const attemptPairingRequest = async () => {
+            if (!usePairing || pairingAttempted) return;
+            pairingAttempted = true;
+            if (pairingSafetyTimer) clearTimeout(pairingSafetyTimer);
+
             const cleanNumber = phoneNumber.replace(/\D/g, '');
             const existingBlock = getWaBlock(cleanNumber);
             if (existingBlock) {
@@ -1217,31 +1228,55 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 waStatuses[schoolId] = 'Blocked';
                 waLastError[schoolId] = `This number was rate-limited by WhatsApp. Try again in about ${minsLeft} minute(s).`;
                 waPairingRequested[schoolId] = false;
-            } else {
-                try {
-                    const code = await sock.requestPairingCode(cleanNumber);
-                    waPairingCodes[schoolId] = code;
-                    waStatuses[schoolId] = 'Enter Pairing Code';
-                    waPairingRequested[schoolId] = true;
-                    console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
-                } catch (e) {
-                    console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
-                    if (isRateLimitError(e)) {
-                        const blocked = setWaBlock(cleanNumber);
-                        const minsLeft = Math.ceil((blocked.blockedUntil - Date.now()) / 60000);
-                        waStatuses[schoolId] = 'Blocked';
-                        waLastError[schoolId] = `WhatsApp rate-limited this number. Try again in about ${minsLeft} minute(s).`;
-                    } else {
-                        waStatuses[schoolId] = 'Disconnected';
-                        waLastError[schoolId] = `Pairing code request failed: ${e.message || e}`;
-                    }
+                return;
+            }
+
+            try {
+                const code = await sock.requestPairingCode(cleanNumber);
+                waPairingCodes[schoolId] = code;
+                waStatuses[schoolId] = 'Enter Pairing Code';
+                waPairingRequested[schoolId] = true;
+                console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
+            } catch (e) {
+                console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
+                if (isRateLimitError(e)) {
+                    const blocked = setWaBlock(cleanNumber);
+                    const minsLeft = Math.ceil((blocked.blockedUntil - Date.now()) / 60000);
+                    waStatuses[schoolId] = 'Blocked';
+                    waLastError[schoolId] = `WhatsApp rate-limited this number. Try again in about ${minsLeft} minute(s).`;
+                } else {
+                    waStatuses[schoolId] = 'Disconnected';
+                    waLastError[schoolId] = `Pairing code request failed: ${e.message || e}`;
                 }
             }
+        };
+
+        // Safety net: if the socket never reaches "connecting"/qr (e.g. it hangs or the
+        // event never fires for some reason), don't leave the UI stuck on "Connecting..."
+        // forever — surface a timeout error after a generous window instead. Baileys' own
+        // connectTimeoutMs will normally close the socket well before this fires.
+        if (usePairing) {
+            pairingSafetyTimer = setTimeout(() => {
+                if (!pairingAttempted) {
+                    pairingAttempted = true;
+                    console.error(`[WhatsApp:${schoolId}] Timed out waiting for socket to be ready for pairing.`);
+                    waStatuses[schoolId] = 'Disconnected';
+                    waLastError[schoolId] = 'Timed out waiting to reach WhatsApp. Please try again.';
+                }
+            }, 20000);
         }
 
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
             console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
+
+            // The socket is ready to accept requestPairingCode() once it reports "connecting"
+            // or emits its first qr string — whichever comes first. This is the documented,
+            // race-free point to request the code, rather than doing it synchronously right
+            // after makeWASocket() returns.
+            if (usePairing && (connection === 'connecting' || qr)) {
+                attemptPairingRequest();
+            }
 
             // Only show the QR code when this session is using the QR login method.
             // In pairing-code mode Baileys may still emit a qr event internally; ignore it.
@@ -1255,6 +1290,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             }
 
             if (connection === 'close') {
+                if (pairingSafetyTimer) clearTimeout(pairingSafetyTimer);
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                 delete waSocks[schoolId];
