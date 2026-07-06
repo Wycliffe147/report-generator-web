@@ -1096,8 +1096,11 @@ function setupWhatsAppStatusPolling() {
         const logoutBtn = document.getElementById('whatsapp-logout-btn');
         const pairingDisplay = document.getElementById('pairing-code-display');
         const pairingValue = document.getElementById('pairing-code-value');
+        const requestBtn = document.getElementById('request-pairing-code-btn');
         
         if (data.status === "Connected") {
+            stopWaBlockCountdown();
+            requestBtn.disabled = false;
             statusSpan.className = "statusConnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
@@ -1105,6 +1108,8 @@ function setupWhatsAppStatusPolling() {
             pairingDisplay.style.display = 'none';
             logoutBtn.style.display = 'block';
         } else if (data.status === "Scan QR Code" && data.qr) {
+            stopWaBlockCountdown();
+            requestBtn.disabled = false;
             statusSpan.className = "statusPending";
             document.getElementById('qr-image').style.display = 'block';
             document.getElementById('qr-image').src = data.qr;
@@ -1112,11 +1117,23 @@ function setupWhatsAppStatusPolling() {
             pairingDisplay.style.display = 'none';
             logoutBtn.style.display = 'block';
         } else if (data.status === "Enter Pairing Code" && data.pairingCode) {
+            stopWaBlockCountdown();
+            requestBtn.disabled = false;
             statusSpan.className = "statusPending";
             pairingValue.innerText = data.pairingCode;
             pairingDisplay.style.display = 'block';
             logoutBtn.style.display = 'block';
+        } else if (data.status === "Blocked" && data.block) {
+            statusSpan.className = "statusBlocked";
+            document.getElementById('qr-image').style.display = 'none';
+            document.getElementById('qr-placeholder').style.display = 'block';
+            pairingDisplay.style.display = 'none';
+            logoutBtn.style.display = 'none';
+            requestBtn.disabled = true;
+            startWaBlockCountdown(data.block.blockedUntil);
         } else {
+            stopWaBlockCountdown();
+            requestBtn.disabled = false;
             statusSpan.className = "statusDisconnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
@@ -1130,6 +1147,33 @@ function setupWhatsAppStatusPolling() {
     
     checkStatus();
     statusInterval = setInterval(checkStatus, 3000);
+}
+
+// Live mm:ss countdown while a number is rate-limited/blocked by WhatsApp.
+let waBlockCountdownInterval = null;
+function stopWaBlockCountdown() {
+    if (waBlockCountdownInterval) {
+        clearInterval(waBlockCountdownInterval);
+        waBlockCountdownInterval = null;
+    }
+}
+function startWaBlockCountdown(blockedUntil) {
+    const placeholder = document.getElementById('qr-placeholder');
+    const render = () => {
+        const msLeft = blockedUntil - Date.now();
+        if (msLeft <= 0) {
+            stopWaBlockCountdown();
+            placeholder.innerText = "This number's cooldown has ended — you can try requesting a code again.";
+            document.getElementById('request-pairing-code-btn').disabled = false;
+            return;
+        }
+        const mins = Math.floor(msLeft / 60000);
+        const secs = Math.floor((msLeft % 60000) / 1000);
+        placeholder.innerText = `🚫 WhatsApp rate-limited this number. Try again in ${mins}:${String(secs).padStart(2, '0')}.`;
+    };
+    stopWaBlockCountdown();
+    render();
+    waBlockCountdownInterval = setInterval(render, 1000);
 }
 
 document.getElementById('method-qr-btn').addEventListener('click', async () => {
@@ -1155,6 +1199,7 @@ document.getElementById('request-pairing-code-btn').addEventListener('click', as
     const btn = document.getElementById('request-pairing-code-btn');
     btn.disabled = true;
     btn.innerText = 'Requesting code...';
+    let staysDisabled = false;
     try {
         const res = await apiFetch('/api/whatsapp/connect', {
             method: 'POST',
@@ -1162,14 +1207,20 @@ document.getElementById('request-pairing-code-btn').addEventListener('click', as
             body: JSON.stringify({ method: 'pairing', phoneNumber })
         });
         const data = await res.json();
-        if (!res.ok) {
+        if (res.status === 429) {
+            alert(data.error || 'This number was rate-limited by WhatsApp. Please wait before trying again.');
+            if (data.retryAfterMinutes) {
+                startWaBlockCountdown(Date.now() + data.retryAfterMinutes * 60000);
+            }
+            staysDisabled = true;
+        } else if (!res.ok) {
             alert(data.error || 'Failed to request pairing code.');
         }
     } catch (e) {
         alert('Failed to request pairing code.');
     } finally {
-        btn.disabled = false;
         btn.innerText = 'Get Pairing Code';
+        btn.disabled = staysDisabled;
     }
 });
 

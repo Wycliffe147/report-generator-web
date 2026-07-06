@@ -1010,6 +1010,60 @@ const waLastMethod = {};      // last requested login method ('qr' | 'pairing') 
 const waLastPhone = {};       // last requested phone number per school (for pairing method)
 const waPairingRequested = {}; // true once a pairing code has been requested for the current session (prevents re-requesting on every internal reconnect)
 
+// --- WhatsApp pairing rate-limit ("blocked number") handling ---------------
+// WhatsApp rate-limits pairing-code requests per phone number. This can show up in
+// two different ways from Baileys:
+//   1) requestPairingCode() itself throws with a 429 / "rate-overlimit" error.
+//   2) The code is issued successfully, but WhatsApp kills the connection ~1s later
+//      with a 429/"rate-overlimit" error surfaced via the connection.update "close"
+//      event's lastDisconnect.error.
+// The block is tied to the phone number itself (not the schoolId/session), so it's
+// persisted in dbCache (survives restarts) keyed by the cleaned phone number.
+const WA_BLOCK_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
+function isRateLimitError(err) {
+    if (!err) return false;
+    const text = [
+        err.message,
+        err.data,
+        err.output && err.output.statusCode,
+        err.output && err.output.payload && err.output.payload.error,
+        err.output && err.output.payload && err.output.payload.message
+    ].filter(Boolean).join(' ');
+    return /rate-overlimit/i.test(text) || err.data === 429 || (err.output && err.output.statusCode === 429);
+}
+
+function getWaBlock(cleanNumber) {
+    const blocks = dbCache && dbCache.waBlocks;
+    if (!blocks || !blocks[cleanNumber]) return null;
+    const entry = blocks[cleanNumber];
+    if (Date.now() >= entry.blockedUntil) {
+        // Expired — lazily clean up.
+        delete blocks[cleanNumber];
+        writeDb();
+        return null;
+    }
+    return entry;
+}
+
+function setWaBlock(cleanNumber, ms = WA_BLOCK_COOLDOWN_MS, reason = 'rate-overlimit') {
+    if (!dbCache.waBlocks) dbCache.waBlocks = {};
+    const existing = dbCache.waBlocks[cleanNumber];
+    // If this number was already blocked recently, escalate the cooldown instead of
+    // resetting to the base value, since repeated hits usually mean a longer block.
+    const escalated = existing ? Math.min(ms * 2, 24 * 60 * 60 * 1000) : ms;
+    dbCache.waBlocks[cleanNumber] = { blockedUntil: Date.now() + escalated, reason, lastHitAt: Date.now() };
+    writeDb();
+    return dbCache.waBlocks[cleanNumber];
+}
+
+function clearWaBlock(cleanNumber) {
+    if (dbCache && dbCache.waBlocks && dbCache.waBlocks[cleanNumber]) {
+        delete dbCache.waBlocks[cleanNumber];
+        writeDb();
+    }
+}
+
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
         await collection.replaceOne(
@@ -1155,17 +1209,33 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
         // If the caller asked for phone-number pairing and this session isn't registered yet,
         // request a pairing code instead of waiting for a QR scan.
         if (usePairing) {
-            try {
-                const cleanNumber = phoneNumber.replace(/\D/g, '');
-                const code = await sock.requestPairingCode(cleanNumber);
-                waPairingCodes[schoolId] = code;
-                waStatuses[schoolId] = 'Enter Pairing Code';
-                waPairingRequested[schoolId] = true;
-                console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
-            } catch (e) {
-                console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
-                waStatuses[schoolId] = 'Disconnected';
-                waLastError[schoolId] = `Pairing code request failed: ${e.message || e}`;
+            const cleanNumber = phoneNumber.replace(/\D/g, '');
+            const existingBlock = getWaBlock(cleanNumber);
+            if (existingBlock) {
+                const minsLeft = Math.ceil((existingBlock.blockedUntil - Date.now()) / 60000);
+                console.log(`[WhatsApp:${schoolId}] Skipping pairing request — ${cleanNumber} is blocked for ${minsLeft} more min(s).`);
+                waStatuses[schoolId] = 'Blocked';
+                waLastError[schoolId] = `This number was rate-limited by WhatsApp. Try again in about ${minsLeft} minute(s).`;
+                waPairingRequested[schoolId] = false;
+            } else {
+                try {
+                    const code = await sock.requestPairingCode(cleanNumber);
+                    waPairingCodes[schoolId] = code;
+                    waStatuses[schoolId] = 'Enter Pairing Code';
+                    waPairingRequested[schoolId] = true;
+                    console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
+                } catch (e) {
+                    console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
+                    if (isRateLimitError(e)) {
+                        const blocked = setWaBlock(cleanNumber);
+                        const minsLeft = Math.ceil((blocked.blockedUntil - Date.now()) / 60000);
+                        waStatuses[schoolId] = 'Blocked';
+                        waLastError[schoolId] = `WhatsApp rate-limited this number. Try again in about ${minsLeft} minute(s).`;
+                    } else {
+                        waStatuses[schoolId] = 'Disconnected';
+                        waLastError[schoolId] = `Pairing code request failed: ${e.message || e}`;
+                    }
+                }
             }
         }
 
@@ -1193,6 +1263,27 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 // internal restart after issuing it — keep it on screen until it either
                 // succeeds, is replaced by an explicit new request, or the account logs out.
                 const midPairing = usePairing || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
+
+                // WhatsApp sometimes issues a pairing code successfully, then closes the
+                // connection ~1s later with a 429/"rate-overlimit" error. This wouldn't have
+                // been caught by the requestPairingCode() try/catch above since it arrives
+                // asynchronously via this close event instead. Detect it here so a rate-limit
+                // doesn't just look like a normal disconnect/reconnect.
+                const rateLimited = midPairing && phoneNumber && isRateLimitError(lastDisconnect?.error);
+                if (rateLimited) {
+                    const cleanNumber = phoneNumber.replace(/\D/g, '');
+                    const blocked = setWaBlock(cleanNumber);
+                    const minsLeft = Math.ceil((blocked.blockedUntil - Date.now()) / 60000);
+                    console.log(`[WhatsApp:${schoolId}] Rate-limited after issuing pairing code for ${cleanNumber}. Blocking for ~${minsLeft} min(s).`);
+                    waStatuses[schoolId] = 'Blocked';
+                    waLastError[schoolId] = `WhatsApp rate-limited this number right after issuing the code. Try again in about ${minsLeft} minute(s).`;
+                    waQrImages[schoolId] = null;
+                    waPairingCodes[schoolId] = null;
+                    waPairingRequested[schoolId] = false;
+                    // Don't auto-reconnect into the same block — that would just retrigger it.
+                    return;
+                }
+
                 if (!midPairing) {
                     waStatuses[schoolId] = 'Disconnected';
                     waQrImages[schoolId] = null;
@@ -1239,11 +1330,20 @@ app.get('/api/whatsapp/status', (req, res) => {
         waStatuses[schoolId] = 'Connecting';
         connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
     }
+    let blockInfo = null;
+    if (waLastPhone[schoolId]) {
+        const block = getWaBlock(waLastPhone[schoolId].replace(/\D/g, ''));
+        if (block) {
+            blockInfo = { blockedUntil: block.blockedUntil, retryAfterMinutes: Math.ceil((block.blockedUntil - Date.now()) / 60000) };
+        }
+    }
+
     res.json({
         status: waStatuses[schoolId] || 'Disconnected',
         qr: waQrImages[schoolId] || null,
         pairingCode: waPairingCodes[schoolId] || null,
-        lastError: waLastError[schoolId] || null
+        lastError: waLastError[schoolId] || null,
+        block: blockInfo
     });
 });
 
@@ -1255,6 +1355,17 @@ app.post('/api/whatsapp/connect', async (req, res) => {
 
     if (method === 'pairing' && (!phoneNumber || !phoneNumber.replace(/\D/g, ''))) {
         return res.status(400).json({ error: 'Please provide a valid phone number with country code.' });
+    }
+
+    if (method === 'pairing') {
+        const block = getWaBlock(phoneNumber.replace(/\D/g, ''));
+        if (block) {
+            const minsLeft = Math.ceil((block.blockedUntil - Date.now()) / 60000);
+            return res.status(429).json({
+                error: `This number was rate-limited by WhatsApp. Please wait about ${minsLeft} minute(s) before trying again.`,
+                retryAfterMinutes: minsLeft
+            });
+        }
     }
 
     waStatuses[schoolId] = 'Connecting';
