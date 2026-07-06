@@ -1011,6 +1011,7 @@ const waLastMethod = {};      // last requested login method ('qr' | 'pairing') 
 const waLastPhone = {};       // last requested phone number per school (for pairing method)
 const waPairingRequested = {}; // true once a pairing code has been requested for the current session (prevents re-requesting on every internal reconnect)
 const waBadSessionCount = {}; // consecutive badSession/multideviceMismatch failures per school (guards against a wipe-retry-fail loop)
+const waPairingCloseCount = {}; // consecutive close events (401/other) while never-registered mid-pairing — guards against looping forever on a handshake that never stabilizes
 
 // --- WhatsApp pairing rate-limit ("blocked number") handling ---------------
 // WhatsApp rate-limits pairing-code requests per phone number. This can show up in
@@ -1303,6 +1304,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 waPairingCodes[schoolId] = code;
                 waStatuses[schoolId] = 'Enter Pairing Code';
                 waPairingRequested[schoolId] = true;
+                waPairingCloseCount[schoolId] = 0;
                 console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] Pairing code requested: ${code} (isPairingFlow=${isPairingFlow}, usePairing=${usePairing})`);
             } catch (e) {
                 console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
@@ -1415,6 +1417,26 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 const isCorruptedSession = (statusCode === DisconnectReason.badSession && !midPairing)
                     || statusCode === DisconnectReason.multideviceMismatch;
 
+                // A never-registered pairing handshake that keeps closing (401 or otherwise)
+                // without ever completing means it's genuinely stuck — not just Baileys' usual
+                // one-off internal restart. Keep retrying quietly up to a point, but after too
+                // many consecutive failures stop and tell the user plainly, rather than looping
+                // forever and risking WhatsApp escalating to a harder block.
+                const PAIRING_CLOSE_LIMIT = 8;
+                if (midPairing && neverRegistered && !isCorruptedSession && !rateLimited) {
+                    waPairingCloseCount[schoolId] = (waPairingCloseCount[schoolId] || 0) + 1;
+                    if (waPairingCloseCount[schoolId] > PAIRING_CLOSE_LIMIT) {
+                        console.error(`[WhatsApp:${schoolId}] Pairing handshake failed to stabilize after ${waPairingCloseCount[schoolId]} consecutive closes (last statusCode ${statusCode}). Stopping auto-retry.`);
+                        waPairingCloseCount[schoolId] = 0;
+                        waPairingRequested[schoolId] = false;
+                        waStatuses[schoolId] = 'Disconnected';
+                        waQrImages[schoolId] = null;
+                        waPairingCodes[schoolId] = null;
+                        waLastError[schoolId] = 'Pairing failed — the connection kept dropping before it could complete. Please request a new code and try again.';
+                        return;
+                    }
+                }
+
                 if (isCorruptedSession) {
                     waBadSessionCount[schoolId] = (waBadSessionCount[schoolId] || 0) + 1;
                     if (waBadSessionCount[schoolId] > 3) {
@@ -1458,6 +1480,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 }
             } else if (connection === 'open') {
                 waBadSessionCount[schoolId] = 0;
+                waPairingCloseCount[schoolId] = 0;
                 waStatuses[schoolId] = 'Connected';
                 waQrImages[schoolId] = null;
                 waPairingCodes[schoolId] = null;
@@ -1533,6 +1556,7 @@ app.post('/api/whatsapp/connect', async (req, res) => {
     waPairingCodes[schoolId] = null;
     if (method === 'pairing') {
         waPairingRequested[schoolId] = false; // force a fresh code on explicit request
+        waPairingCloseCount[schoolId] = 0;
     }
 
     connectToWhatsApp(schoolId, { method: method === 'pairing' ? 'pairing' : 'qr', phoneNumber });
