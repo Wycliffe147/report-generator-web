@@ -1261,6 +1261,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
         // code is still valid until the user enters it, a fresh one is explicitly requested,
         // or the connection genuinely opens/logs out.
         const resumingPairing = method === 'pairing' && waPairingRequested[schoolId] && !state.creds.registered;
+        console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] CONNECT START method=${method} resumingPairing=${resumingPairing} waPairingRequested=${waPairingRequested[schoolId]} registered=${state.creds.registered}`);
         if (!resumingPairing) {
             waStatuses[schoolId] = 'Disconnected';
             waQrImages[schoolId] = null;
@@ -1302,7 +1303,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 waPairingCodes[schoolId] = code;
                 waStatuses[schoolId] = 'Enter Pairing Code';
                 waPairingRequested[schoolId] = true;
-                console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
+                console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] Pairing code requested: ${code} (isPairingFlow=${isPairingFlow}, usePairing=${usePairing})`);
             } catch (e) {
                 console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
                 if (isRateLimitError(e)) {
@@ -1369,6 +1370,8 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 // internal restart after issuing it — keep it on screen until it either
                 // succeeds, is replaced by an explicit new request, or the account logs out.
                 const midPairing = isPairingFlow || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
+
+                console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] CLOSE statusCode=${statusCode} reason=${lastDisconnect?.error?.message || 'n/a'} isPairingFlow=${isPairingFlow} waPairingRequested=${waPairingRequested[schoolId]} midPairing=${midPairing} currentStatus=${waStatuses[schoolId]} currentCode=${waPairingCodes[schoolId]}`);
 
                 // WhatsApp sometimes issues a pairing code successfully, then closes the
                 // connection ~1s later with a 429/"rate-overlimit" error. This wouldn't have
@@ -1469,6 +1472,7 @@ app.get('/api/whatsapp/status', (req, res) => {
     // Reuse whatever method was last requested (qr/pairing) instead of always defaulting to QR,
     // so an in-progress phone-number pairing attempt doesn't get silently reverted.
     if (!waSocks[schoolId] && !waConnecting[schoolId] && waStatuses[schoolId] !== 'Connecting') {
+        console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] POLLER auto-start firing — overwriting status "${waStatuses[schoolId]}" (waPairingRequested=${waPairingRequested[schoolId]}, hadCode=${!!waPairingCodes[schoolId]})`);
         waStatuses[schoolId] = 'Connecting';
         connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
     }
