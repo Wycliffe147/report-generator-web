@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, initAuthCreds, BufferJSON, proto, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const multer = require('multer');
@@ -1184,7 +1184,12 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             printQRInTerminal: false,
             syncFullHistory: false,
             markOnlineOnConnect: false,
-            ...(usePairing ? { browser: ['Chrome (Linux)', '', ''] } : {}),
+            // Pairing-code login requires a valid, well-formed [OS, browser, version] triplet —
+            // Baileys' own docs warn that an ad-hoc/malformed browser string (like the previous
+            // ['Chrome (Linux)', '', ''], which crams everything into the OS slot and leaves the
+            // browser name/version empty) causes WhatsApp to reject the pairing request outright.
+            // Browsers.ubuntu('Chrome') produces the correct ['Ubuntu', 'Chrome', '<version>'] shape.
+            ...(usePairing ? { browser: Browsers.ubuntu('Chrome') } : {}),
             logger: pino({ level: 'silent' })
         });
 
