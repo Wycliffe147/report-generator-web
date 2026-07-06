@@ -284,31 +284,10 @@
                         <div class="status-indicator">
                             Status: <span id="whatsapp-status" class="statusDisconnected">Disconnected</span>
                         </div>
-
-                        <div class="connect-method-toggle" style="display:flex; gap:8px; margin-bottom:15px;">
-                            <button type="button" id="method-qr-btn" class="btn" style="flex:1;">📷 QR Code</button>
-                            <button type="button" id="method-phone-btn" class="btn" style="flex:1;">📱 Phone Number</button>
+                        <div class="qr-container">
+                            <div id="qr-placeholder">Scan code to connect WhatsApp</div>
+                            <img id="qr-image" style="display:none;" src="" alt="WhatsApp QR Code">
                         </div>
-
-                        <div id="qr-method-panel">
-                            <div class="qr-container">
-                                <div id="qr-placeholder">Scan code to connect WhatsApp</div>
-                                <img id="qr-image" style="display:none;" src="" alt="WhatsApp QR Code">
-                            </div>
-                        </div>
-
-                        <div id="phone-method-panel" style="display:none;">
-                            <div class="input-group">
-                                <label for="wa-phone-number">WhatsApp Number (country code, digits only)</label>
-                                <input type="text" id="wa-phone-number" placeholder="e.g. 265991234567">
-                            </div>
-                            <button type="button" id="request-pairing-code-btn" class="btn" style="width:100%; margin-top:10px;">Get Pairing Code</button>
-                            <div id="pairing-code-display" style="display:none; text-align:center; margin-top:15px;">
-                                <p style="font-size:0.85rem; margin-bottom:8px;">Open WhatsApp → Linked Devices → Link with phone number, then enter:</p>
-                                <div id="pairing-code-value" style="font-size:1.8rem; font-weight:bold; letter-spacing:4px;"></div>
-                            </div>
-                        </div>
-
                         <button id="whatsapp-logout-btn" class="btn danger-btn" style="margin-top: 15px; width: 100%; display: none;">Disconnect / Reset Connection</button>
                     </div>
 

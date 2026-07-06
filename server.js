@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, initAuthCreds, BufferJSON, proto, Browsers } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const multer = require('multer');
@@ -12,7 +12,6 @@ const jwt = require('jsonwebtoken');
 const { ZipArchive } = require('archiver');
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
-const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 // Prevent Baileys timeouts from crashing the server
 process.on('unhandledRejection', (reason, promise) => {
@@ -1004,119 +1003,6 @@ app.get('/api/preview-pdf/:id', async (req, res) => {
 const waSocks = {};           // sock per school
 const waQrImages = {};        // qr data URL per school
 const waStatuses = {};        // connection status per school
-const waPairingCodes = {};    // phone-number pairing code per school
-const waConnecting = {};      // lock: true while a connection attempt is in flight for a school
-const waLastError = {};       // last error message per school, surfaced to the UI for debugging
-const waLastMethod = {};      // last requested login method ('qr' | 'pairing') per school
-const waLastPhone = {};       // last requested phone number per school (for pairing method)
-const waPairingRequested = {}; // true once a pairing code has been requested for the current session (prevents re-requesting on every internal reconnect)
-const waBadSessionCount = {}; // consecutive badSession/multideviceMismatch failures per school (guards against a wipe-retry-fail loop)
-const waPairingCloseCount = {}; // consecutive close events (401/other) while never-registered mid-pairing — guards against looping forever on a handshake that never stabilizes
-
-// --- WhatsApp pairing rate-limit ("blocked number") handling ---------------
-// WhatsApp rate-limits pairing-code requests per phone number. This can show up in
-// two different ways from Baileys:
-//   1) requestPairingCode() itself throws with a 429 / "rate-overlimit" error.
-//   2) The code is issued successfully, but WhatsApp kills the connection ~1s later
-//      with a 429/"rate-overlimit" error surfaced via the connection.update "close"
-//      event's lastDisconnect.error.
-// The block is tied to the phone number itself (not the schoolId/session), so it's
-// persisted in dbCache (survives restarts) keyed by the cleaned phone number.
-const WA_BLOCK_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
-
-function isRateLimitError(err) {
-    if (!err) return false;
-    const text = [
-        err.message,
-        err.data,
-        err.output && err.output.statusCode,
-        err.output && err.output.payload && err.output.payload.error,
-        err.output && err.output.payload && err.output.payload.message
-    ].filter(Boolean).join(' ');
-    return /rate-overlimit/i.test(text) || err.data === 429 || (err.output && err.output.statusCode === 429);
-}
-
-function getWaBlock(cleanNumber) {
-    const blocks = dbCache && dbCache.waBlocks;
-    if (!blocks || !blocks[cleanNumber]) return null;
-    const entry = blocks[cleanNumber];
-    if (Date.now() >= entry.blockedUntil) {
-        // Expired — lazily clean up.
-        delete blocks[cleanNumber];
-        writeDb();
-        return null;
-    }
-    return entry;
-}
-
-function setWaBlock(cleanNumber, ms = WA_BLOCK_COOLDOWN_MS, reason = 'rate-overlimit') {
-    if (!dbCache.waBlocks) dbCache.waBlocks = {};
-    const existing = dbCache.waBlocks[cleanNumber];
-    // If this number was already blocked recently, escalate the cooldown instead of
-    // resetting to the base value, since repeated hits usually mean a longer block.
-    const escalated = existing ? Math.min(ms * 2, 24 * 60 * 60 * 1000) : ms;
-    dbCache.waBlocks[cleanNumber] = { blockedUntil: Date.now() + escalated, reason, lastHitAt: Date.now() };
-    writeDb();
-    return dbCache.waBlocks[cleanNumber];
-}
-
-function clearWaBlock(cleanNumber) {
-    if (dbCache && dbCache.waBlocks && dbCache.waBlocks[cleanNumber]) {
-        delete dbCache.waBlocks[cleanNumber];
-        writeDb();
-    }
-}
-
-// --- Phone number validation ------------------------------------------------
-// Previously, phone numbers were only checked with a bare regex (e.g. "is there at
-// least one digit?", or "is it exactly 9 digits, then assume Malawi"). That doesn't
-// catch a user typing a local-format number (e.g. starting with a trunk "0") or a
-// number with the wrong number of digits for its country — both pass the old check
-// and only fail once they reach WhatsApp's servers, with a vague error.
-//
-// libphonenumber-js validates against real per-country numbering rules instead.
-const DEFAULT_PHONE_COUNTRY = 'MW'; // Malawi — change if deploying for a different country's schools.
-
-/**
- * Normalize a user-entered phone number into the digits-only, country-code-prefixed
- * format WhatsApp/Baileys expects (e.g. "265991234567").
- *
- * Tries two readings and accepts whichever is valid:
- *   1) The number already includes a country code (with or without a leading '+').
- *   2) The number is a local/national-format number for `defaultCountry`, including
- *      the common case of a leading trunk prefix (e.g. Malawi's "0991234567").
- *
- * Returns { ok: true, number, country } on success, or { ok: false, reason } with a
- * human-readable message safe to show directly to the user.
- */
-function normalizeWhatsAppNumber(raw, defaultCountry = DEFAULT_PHONE_COUNTRY) {
-    const digitsOnly = String(raw || '').replace(/\D/g, '');
-    if (!digitsOnly) {
-        return { ok: false, reason: 'Please enter a phone number.' };
-    }
-
-    let asInternational = null;
-    let asLocal = null;
-    try { asInternational = parsePhoneNumberFromString('+' + digitsOnly); } catch (_) {}
-    try { asLocal = parsePhoneNumberFromString(digitsOnly, defaultCountry); } catch (_) {}
-
-    // Prefer the "already has a country code" reading when it's valid — a user who
-    // typed extra leading digits meant them as a country code, not part of a longer
-    // local number. Fall back to the local-number reading (e.g. handles a leading
-    // trunk "0") only if the international reading didn't check out.
-    const parsed = (asInternational && asInternational.isValid()) ? asInternational
-        : (asLocal && asLocal.isValid()) ? asLocal
-        : null;
-
-    if (!parsed) {
-        return {
-            ok: false,
-            reason: `That doesn't look like a valid phone number. Include the country code, e.g. 265991234567 for Malawi.`
-        };
-    }
-
-    return { ok: true, number: parsed.number.replace('+', ''), country: parsed.country || null };
-}
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -1194,385 +1080,93 @@ async function clearWhatsAppAuth(schoolId) {
     }
 }
 
-async function connectToWhatsApp(schoolId = 'default', opts = {}) {
-    // Prevent two overlapping connection attempts for the same school — this was
-    // causing the QR/pairing session to be torn down and recreated in a loop.
-    if (waConnecting[schoolId]) {
-        console.log(`[WhatsApp:${schoolId}] Connection attempt already in progress, skipping duplicate call.`);
-        return;
+async function connectToWhatsApp(schoolId = 'default') {
+    // Disconnect existing session for this school if any
+    if (waSocks[schoolId]) {
+        try { waSocks[schoolId].end(undefined); } catch(_) {}
+        delete waSocks[schoolId];
     }
-    waConnecting[schoolId] = true;
 
-    const { method = 'qr', phoneNumber = null } = opts;
-    waLastMethod[schoolId] = method;
-    waLastPhone[schoolId] = phoneNumber;
+    let state, saveCreds;
+    if (mongoDb) {
+        // Each school gets its own MongoDB collection for auth
+        const collection = mongoDb.collection(`whatsapp_auth_${schoolId}`);
+        ({ state, saveCreds } = await useMongoDBAuthState(collection));
+    } else {
+        // Each school gets its own local auth folder
+        ({ state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys_${schoolId}`));
+    }
 
-    try {
-        // Disconnect existing session for this school if any
-        if (waSocks[schoolId]) {
-            try { waSocks[schoolId].end(undefined); } catch(_) {}
-            delete waSocks[schoolId];
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+        version,
+        auth: state,
+        printQRInTerminal: false,
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
+        logger: pino({ level: 'silent' })
+    });
+
+    waSocks[schoolId] = sock;
+    waStatuses[schoolId] = 'Disconnected';
+    waQrImages[schoolId] = null;
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
+
+        if (qr) {
+            waStatuses[schoolId] = 'Scan QR Code';
+            try {
+                waQrImages[schoolId] = await QRCode.toDataURL(qr);
+            } catch (e) {
+                console.error(`[WhatsApp:${schoolId}] Failed to generate QR:`, e);
+            }
         }
 
-        let state, saveCreds;
-        if (mongoDb) {
-            // Each school gets its own MongoDB collection for auth
-            const collection = mongoDb.collection(`whatsapp_auth_${schoolId}`);
-            ({ state, saveCreds } = await useMongoDBAuthState(collection));
-        } else {
-            // Each school gets its own local auth folder
-            ({ state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys_${schoolId}`));
-        }
-
-        const { version } = await fetchLatestBaileysVersion();
-
-        // Pairing-code login only makes sense while this session hasn't been registered yet.
-        // Baileys does a normal internal restart shortly after issuing a code — the socket
-        // gets torn down and a brand new one created for the SAME logical pairing attempt.
-        // `isPairingFlow` stays true across that restart (so the browser identity and the
-        // "ignore internal qr events" behavior stay consistent on the reconnected socket too).
-        // `usePairing` narrows that down to "should THIS socket actually fire a new request" —
-        // only true once, on the very first socket, since re-requesting on the reconnect would
-        // generate a brand new code and invalidate the one the user is about to enter.
-        const isPairingFlow = method === 'pairing' && !!phoneNumber && !state.creds.registered;
-        const usePairing = isPairingFlow && !waPairingRequested[schoolId];
-
-        const sock = makeWASocket({
-            version,
-            auth: state,
-            printQRInTerminal: false,
-            syncFullHistory: false,
-            markOnlineOnConnect: false,
-            // Pairing-code login requires a valid, well-formed [OS, browser, version] triplet —
-            // Baileys' own docs warn that an ad-hoc/malformed browser string (like the previous
-            // ['Chrome (Linux)', '', ''], which crams everything into the OS slot and leaves the
-            // browser name/version empty) causes WhatsApp to reject the pairing request outright.
-            // Browsers.ubuntu('Chrome') produces the correct ['Ubuntu', 'Chrome', '<version>'] shape.
-            // Uses isPairingFlow (not usePairing) so the reconnected socket keeps presenting the
-            // same browser identity WhatsApp saw when the code was issued — using the default
-            // browser here instead would make WhatsApp treat it as a different client.
-            ...(isPairingFlow ? { browser: Browsers.ubuntu('Chrome') } : {}),
-            logger: pino({ level: 'silent' })
-        });
-
-        waSocks[schoolId] = sock;
-
-        // If we already issued a pairing code and are just resuming after Baileys' normal
-        // internal restart, keep showing that same code/status instead of wiping it — the
-        // code is still valid until the user enters it, a fresh one is explicitly requested,
-        // or the connection genuinely opens/logs out.
-        const resumingPairing = method === 'pairing' && waPairingRequested[schoolId] && !state.creds.registered;
-        console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] CONNECT START method=${method} resumingPairing=${resumingPairing} waPairingRequested=${waPairingRequested[schoolId]} registered=${state.creds.registered}`);
-        if (!resumingPairing) {
+        if (connection === 'close') {
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             waStatuses[schoolId] = 'Disconnected';
             waQrImages[schoolId] = null;
-            waPairingCodes[schoolId] = null;
-            waLastError[schoolId] = null;
+            delete waSocks[schoolId];
+            if (shouldReconnect) {
+                console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
+                connectToWhatsApp(schoolId);
+            } else {
+                console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
+                await clearWhatsAppAuth(schoolId);
+            }
+        } else if (connection === 'open') {
+            waStatuses[schoolId] = 'Connected';
+            waQrImages[schoolId] = null;
+            console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
         }
+    });
 
-        // Socket now exists, so the status endpoint's auto-start check will no
-        // longer trigger a duplicate session — safe to release the lock here.
-        waConnecting[schoolId] = false;
-
-        // requestPairingCode() must NOT be called immediately after makeWASocket() returns —
-        // the underlying WebSocket has only just started connecting and isn't ready to accept
-        // it yet, which reliably throws a "Connection Closed" (428) error. Per Baileys' own
-        // docs, we instead wait for the connection.update event to report "connecting" (or emit
-        // a qr string) before requesting a code — that's the earliest point the socket is
-        // actually able to handle the request.
-        let pairingAttempted = false;
-        let pairingSafetyTimer = null;
-
-        const attemptPairingRequest = async () => {
-            if (!usePairing || pairingAttempted) return;
-            pairingAttempted = true;
-            if (pairingSafetyTimer) clearTimeout(pairingSafetyTimer);
-
-            const cleanNumber = phoneNumber.replace(/\D/g, '');
-            const existingBlock = getWaBlock(cleanNumber);
-            if (existingBlock) {
-                const minsLeft = Math.ceil((existingBlock.blockedUntil - Date.now()) / 60000);
-                console.log(`[WhatsApp:${schoolId}] Skipping pairing request — ${cleanNumber} is blocked for ${minsLeft} more min(s).`);
-                waStatuses[schoolId] = 'Blocked';
-                waLastError[schoolId] = `This number was rate-limited by WhatsApp. Try again in about ${minsLeft} minute(s).`;
-                waPairingRequested[schoolId] = false;
-                return;
-            }
-
-            try {
-                const code = await sock.requestPairingCode(cleanNumber);
-                waPairingCodes[schoolId] = code;
-                waStatuses[schoolId] = 'Enter Pairing Code';
-                waPairingRequested[schoolId] = true;
-                waPairingCloseCount[schoolId] = 0;
-                console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] Pairing code requested: ${code} (isPairingFlow=${isPairingFlow}, usePairing=${usePairing})`);
-            } catch (e) {
-                console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
-                if (isRateLimitError(e)) {
-                    const blocked = setWaBlock(cleanNumber);
-                    const minsLeft = Math.ceil((blocked.blockedUntil - Date.now()) / 60000);
-                    waStatuses[schoolId] = 'Blocked';
-                    waLastError[schoolId] = `WhatsApp rate-limited this number. Try again in about ${minsLeft} minute(s).`;
-                } else {
-                    waStatuses[schoolId] = 'Disconnected';
-                    waLastError[schoolId] = `Pairing code request failed: ${e.message || e}`;
-                }
-            }
-        };
-
-        // Safety net: if the socket never reaches "connecting"/qr (e.g. it hangs or the
-        // event never fires for some reason), don't leave the UI stuck on "Connecting..."
-        // forever — surface a timeout error after a generous window instead. Baileys' own
-        // connectTimeoutMs will normally close the socket well before this fires.
-        if (usePairing) {
-            pairingSafetyTimer = setTimeout(() => {
-                if (!pairingAttempted) {
-                    pairingAttempted = true;
-                    console.error(`[WhatsApp:${schoolId}] Timed out waiting for socket to be ready for pairing.`);
-                    waStatuses[schoolId] = 'Disconnected';
-                    waLastError[schoolId] = 'Timed out waiting to reach WhatsApp. Please try again.';
-                }
-            }, 20000);
-        }
-
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, qr } = update;
-            console.log(`[WhatsApp:${schoolId}] CONNECTION UPDATE:`, JSON.stringify({ connection, hasQr: !!qr }));
-
-            // The socket is ready to accept requestPairingCode() once it reports "connecting"
-            // or emits its first qr string — whichever comes first. This is the documented,
-            // race-free point to request the code, rather than doing it synchronously right
-            // after makeWASocket() returns.
-            if (usePairing && (connection === 'connecting' || qr)) {
-                attemptPairingRequest();
-            }
-
-            // Only show the QR code when this session is using the QR login method.
-            // In pairing-code mode Baileys may still emit a qr event internally; ignore it.
-            // Uses isPairingFlow (not usePairing) — otherwise, on the reconnected socket after
-            // a code has already been issued, usePairing is false, this check would fail, and
-            // the internal qr event would overwrite the status to "Scan QR Code", hiding the
-            // pairing code the user was just given (the "fight" between the two flows).
-            if (qr && !isPairingFlow) {
-                waStatuses[schoolId] = 'Scan QR Code';
-                try {
-                    waQrImages[schoolId] = await QRCode.toDataURL(qr);
-                } catch (e) {
-                    console.error(`[WhatsApp:${schoolId}] Failed to generate QR:`, e);
-                }
-            }
-
-            if (connection === 'close') {
-                if (pairingSafetyTimer) clearTimeout(pairingSafetyTimer);
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                delete waSocks[schoolId];
-
-                // Don't wipe an in-progress pairing code just because Baileys did its normal
-                // internal restart after issuing it — keep it on screen until it either
-                // succeeds, is replaced by an explicit new request, or the account logs out.
-                const midPairing = isPairingFlow || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
-
-                // DisconnectReason.loggedOut (401) is only a genuine, final "you were logged
-                // out" event for a device that had actually completed registration at some
-                // point. A device that was never registered can't have been logged out —
-                // Baileys/WhatsApp can surface a 401 during the initial pairing handshake for
-                // unrelated transient reasons (rate limiting, malformed handshake state, stream
-                // errors). Treating it as final wipes credentials and abandons the flow before
-                // the user even sees a code, then the status poller just restarts it from
-                // scratch a moment later — which is what makes the code look like it "vanishes."
-                const neverRegistered = !state.creds.registered;
-                const isGenuineLogout = statusCode === DisconnectReason.loggedOut && !neverRegistered;
-                const shouldReconnect = !isGenuineLogout;
-
-                console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] CLOSE statusCode=${statusCode} reason=${lastDisconnect?.error?.message || 'n/a'} isPairingFlow=${isPairingFlow} waPairingRequested=${waPairingRequested[schoolId]} midPairing=${midPairing} neverRegistered=${neverRegistered} isGenuineLogout=${isGenuineLogout} shouldReconnect=${shouldReconnect} currentStatus=${waStatuses[schoolId]} currentCode=${waPairingCodes[schoolId]}`);
-
-                // WhatsApp sometimes issues a pairing code successfully, then closes the
-                // connection ~1s later with a 429/"rate-overlimit" error. This wouldn't have
-                // been caught by the requestPairingCode() try/catch above since it arrives
-                // asynchronously via this close event instead. Detect it here so a rate-limit
-                // doesn't just look like a normal disconnect/reconnect.
-                const rateLimited = midPairing && phoneNumber && isRateLimitError(lastDisconnect?.error);
-                if (rateLimited) {
-                    const cleanNumber = phoneNumber.replace(/\D/g, '');
-                    const blocked = setWaBlock(cleanNumber);
-                    const minsLeft = Math.ceil((blocked.blockedUntil - Date.now()) / 60000);
-                    console.log(`[WhatsApp:${schoolId}] Rate-limited after issuing pairing code for ${cleanNumber}. Blocking for ~${minsLeft} min(s).`);
-                    waStatuses[schoolId] = 'Blocked';
-                    waLastError[schoolId] = `WhatsApp rate-limited this number right after issuing the code. Try again in about ${minsLeft} minute(s).`;
-                    waQrImages[schoolId] = null;
-                    waPairingCodes[schoolId] = null;
-                    waPairingRequested[schoolId] = false;
-                    // Don't auto-reconnect into the same block — that would just retrigger it.
-                    return;
-                }
-
-                // Some disconnect reasons mean the *stored credentials themselves* are the
-                // problem — not the network. Reconnecting with the same (corrupted/stale) auth
-                // state just repeats the same failed handshake indefinitely. For these, wipe
-                // the auth state first so the next attempt starts a clean QR/pairing flow.
-                // A 401/badSession close right after (or during) issuing a pairing code is
-                // Baileys' normal internal restart, not a corrupted session — don't wipe the
-                // creds or drop the code the user is currently trying to enter. Still treat a
-                // genuine multideviceMismatch as corrupted regardless of pairing state.
-                const isCorruptedSession = (statusCode === DisconnectReason.badSession && !midPairing)
-                    || statusCode === DisconnectReason.multideviceMismatch;
-
-                // A never-registered pairing handshake that keeps closing (401 or otherwise)
-                // without ever completing means it's genuinely stuck — not just Baileys' usual
-                // one-off internal restart. Keep retrying quietly up to a point, but after too
-                // many consecutive failures stop and tell the user plainly, rather than looping
-                // forever and risking WhatsApp escalating to a harder block.
-                const PAIRING_CLOSE_LIMIT = 8;
-                if (midPairing && neverRegistered && !isCorruptedSession && !rateLimited) {
-                    waPairingCloseCount[schoolId] = (waPairingCloseCount[schoolId] || 0) + 1;
-                    if (waPairingCloseCount[schoolId] > PAIRING_CLOSE_LIMIT) {
-                        console.error(`[WhatsApp:${schoolId}] Pairing handshake failed to stabilize after ${waPairingCloseCount[schoolId]} consecutive closes (last statusCode ${statusCode}). Stopping auto-retry.`);
-                        waPairingCloseCount[schoolId] = 0;
-                        waPairingRequested[schoolId] = false;
-                        waStatuses[schoolId] = 'Disconnected';
-                        waQrImages[schoolId] = null;
-                        waPairingCodes[schoolId] = null;
-                        waLastError[schoolId] = 'Pairing failed — the connection kept dropping before it could complete. Please request a new code and try again.';
-                        return;
-                    }
-                }
-
-                if (isCorruptedSession) {
-                    waBadSessionCount[schoolId] = (waBadSessionCount[schoolId] || 0) + 1;
-                    if (waBadSessionCount[schoolId] > 3) {
-                        // Wiping and retrying hasn't helped after several attempts — stop looping
-                        // and surface it so a human can look into it, rather than hammering
-                        // WhatsApp's servers (and risking a rate-limit block) indefinitely.
-                        console.error(`[WhatsApp:${schoolId}] Repeated corrupted-session failures (statusCode ${statusCode}) even after clearing credentials. Stopping auto-retry.`);
-                        waPairingRequested[schoolId] = false;
-                        waStatuses[schoolId] = 'Disconnected';
-                        waQrImages[schoolId] = null;
-                        waPairingCodes[schoolId] = null;
-                        waLastError[schoolId] = 'Repeated session errors even after resetting credentials. Please try connecting again manually.';
-                        return;
-                    }
-                    console.log(`[WhatsApp:${schoolId}] Corrupted/stale session detected (statusCode ${statusCode}) — clearing credentials before retrying (attempt ${waBadSessionCount[schoolId]}/3).`);
-                    waPairingRequested[schoolId] = false;
-                    waStatuses[schoolId] = 'Disconnected';
-                    waQrImages[schoolId] = null;
-                    waPairingCodes[schoolId] = null;
-                    await clearWhatsAppAuth(schoolId);
-                    connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
-                    return;
-                }
-
-                if (!midPairing) {
-                    waStatuses[schoolId] = 'Disconnected';
-                    waQrImages[schoolId] = null;
-                    waPairingCodes[schoolId] = null;
-                }
-
-                if (shouldReconnect) {
-                    console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
-                    connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
-                } else {
-                    console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
-                    waPairingRequested[schoolId] = false;
-                    waStatuses[schoolId] = 'Disconnected';
-                    waQrImages[schoolId] = null;
-                    waPairingCodes[schoolId] = null;
-                    await clearWhatsAppAuth(schoolId);
-                }
-            } else if (connection === 'open') {
-                waBadSessionCount[schoolId] = 0;
-                waPairingCloseCount[schoolId] = 0;
-                waStatuses[schoolId] = 'Connected';
-                waQrImages[schoolId] = null;
-                waPairingCodes[schoolId] = null;
-                waPairingRequested[schoolId] = false;
-                console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
-            }
-        });
-
-        sock.ev.on('creds.update', saveCreds);
-    } catch (e) {
-        console.error(`[WhatsApp:${schoolId}] Failed to establish connection:`, e);
-        waStatuses[schoolId] = 'Disconnected';
-        waConnecting[schoolId] = false;
-        waLastError[schoolId] = `Connection setup failed: ${e.message || e}`;
-    }
+    sock.ev.on('creds.update', saveCreds);
 }
 
 // WhatsApp service is started after initDB inside app.listen block
 
 app.get('/api/whatsapp/status', (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
-    // Auto-start a session for this school if none exists yet and nothing is already in flight.
-    // Reuse whatever method was last requested (qr/pairing) instead of always defaulting to QR,
-    // so an in-progress phone-number pairing attempt doesn't get silently reverted.
-    if (!waSocks[schoolId] && !waConnecting[schoolId] && waStatuses[schoolId] !== 'Connecting') {
-        console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] POLLER auto-start firing — overwriting status "${waStatuses[schoolId]}" (waPairingRequested=${waPairingRequested[schoolId]}, hadCode=${!!waPairingCodes[schoolId]})`);
+    // Auto-start a session for this school if none exists yet
+    if (!waSocks[schoolId] && waStatuses[schoolId] !== 'Connecting') {
         waStatuses[schoolId] = 'Connecting';
-        connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
+        connectToWhatsApp(schoolId);
     }
-    let blockInfo = null;
-    if (waLastPhone[schoolId]) {
-        const block = getWaBlock(waLastPhone[schoolId].replace(/\D/g, ''));
-        if (block) {
-            blockInfo = { blockedUntil: block.blockedUntil, retryAfterMinutes: Math.ceil((block.blockedUntil - Date.now()) / 60000) };
-        }
-    }
-
     res.json({
         status: waStatuses[schoolId] || 'Disconnected',
-        qr: waQrImages[schoolId] || null,
-        pairingCode: waPairingCodes[schoolId] || null,
-        lastError: waLastError[schoolId] || null,
-        block: blockInfo
+        qr: waQrImages[schoolId] || null
     });
-});
-
-// Explicitly (re)start a WhatsApp session with a chosen login method.
-// method: 'qr' (default) or 'pairing' (requires phoneNumber, e.g. "265991234567")
-app.post('/api/whatsapp/connect', async (req, res) => {
-    const schoolId = req.user ? req.user.schoolId : 'default';
-    const { method } = req.body || {};
-    let phoneNumber = req.body ? req.body.phoneNumber : null;
-
-    if (method === 'pairing') {
-        const normalized = normalizeWhatsAppNumber(phoneNumber);
-        if (!normalized.ok) {
-            return res.status(400).json({ error: normalized.reason });
-        }
-        phoneNumber = normalized.number;
-
-        const block = getWaBlock(phoneNumber);
-        if (block) {
-            const minsLeft = Math.ceil((block.blockedUntil - Date.now()) / 60000);
-            return res.status(429).json({
-                error: `This number was rate-limited by WhatsApp. Please wait about ${minsLeft} minute(s) before trying again.`,
-                retryAfterMinutes: minsLeft
-            });
-        }
-    }
-
-    waStatuses[schoolId] = 'Connecting';
-    waQrImages[schoolId] = null;
-    waPairingCodes[schoolId] = null;
-    if (method === 'pairing') {
-        waPairingRequested[schoolId] = false; // force a fresh code on explicit request
-        waPairingCloseCount[schoolId] = 0;
-    }
-
-    connectToWhatsApp(schoolId, { method: method === 'pairing' ? 'pairing' : 'qr', phoneNumber });
-
-    res.json({ success: true });
 });
 
 app.post('/api/whatsapp/logout', async (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
     waStatuses[schoolId] = 'Disconnected';
     waQrImages[schoolId] = null;
-    waPairingCodes[schoolId] = null;
-    waLastError[schoolId] = null;
-    waLastMethod[schoolId] = 'qr';
-    waLastPhone[schoolId] = null;
-    waPairingRequested[schoolId] = false;
     if (waSocks[schoolId]) {
         try {
             await waSocks[schoolId].logout();
@@ -1606,11 +1200,6 @@ app.post('/api/whatsapp/send', async (req, res) => {
         return res.status(400).json({ error: "No phone number saved for this student." });
     }
 
-    const normalizedPhone = normalizeWhatsAppNumber(student.phone);
-    if (!normalizedPhone.ok) {
-        return res.status(400).json({ error: `Invalid phone number for ${student.name}: ${normalizedPhone.reason}` });
-    }
-
     try {
         // Ensure PDF is generated
         const pdfBytes = await generatePDF(student, db);
@@ -1618,7 +1207,13 @@ app.post('/api/whatsapp/send', async (req, res) => {
         const pdfPath = path.join(REPORTS_DIR, fileName);
         fs.writeFileSync(pdfPath, pdfBytes);
 
-        const jid = `${normalizedPhone.number}@c.us`;
+        // Format JID: clean phone number and append @c.us
+        let cleanNumber = student.phone.replace(/\D/g, '');
+        // If no country code, default to Malawi (+265) or let user supply it
+        if (cleanNumber.length === 9) {
+            cleanNumber = "265" + cleanNumber; // Malawi standard format
+        }
+        const jid = `${cleanNumber}@c.us`;
 
         await sock.sendMessage(jid, {
             document: fs.readFileSync(pdfPath),

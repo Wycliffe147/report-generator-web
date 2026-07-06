@@ -285,7 +285,6 @@ td input[type="number"]:disabled {
 .statusDisconnected { color: var(--accent-danger); }
 .statusConnected { color: var(--accent-success); }
 .statusPending { color: #f59e0b; }
-.statusBlocked { color: var(--accent-danger); font-weight: 600; }
 
 .progress-bar {
     background-color: #0f172a;
