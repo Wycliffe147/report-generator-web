@@ -1363,7 +1363,6 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             if (connection === 'close') {
                 if (pairingSafetyTimer) clearTimeout(pairingSafetyTimer);
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                 delete waSocks[schoolId];
 
                 // Don't wipe an in-progress pairing code just because Baileys did its normal
@@ -1371,7 +1370,19 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 // succeeds, is replaced by an explicit new request, or the account logs out.
                 const midPairing = isPairingFlow || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
 
-                console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] CLOSE statusCode=${statusCode} reason=${lastDisconnect?.error?.message || 'n/a'} isPairingFlow=${isPairingFlow} waPairingRequested=${waPairingRequested[schoolId]} midPairing=${midPairing} currentStatus=${waStatuses[schoolId]} currentCode=${waPairingCodes[schoolId]}`);
+                // DisconnectReason.loggedOut (401) is only a genuine, final "you were logged
+                // out" event for a device that had actually completed registration at some
+                // point. A device that was never registered can't have been logged out —
+                // Baileys/WhatsApp can surface a 401 during the initial pairing handshake for
+                // unrelated transient reasons (rate limiting, malformed handshake state, stream
+                // errors). Treating it as final wipes credentials and abandons the flow before
+                // the user even sees a code, then the status poller just restarts it from
+                // scratch a moment later — which is what makes the code look like it "vanishes."
+                const neverRegistered = !state.creds.registered;
+                const isGenuineLogout = statusCode === DisconnectReason.loggedOut && !neverRegistered;
+                const shouldReconnect = !isGenuineLogout;
+
+                console.log(`[WhatsApp:${schoolId}] [t=${Date.now()}] CLOSE statusCode=${statusCode} reason=${lastDisconnect?.error?.message || 'n/a'} isPairingFlow=${isPairingFlow} waPairingRequested=${waPairingRequested[schoolId]} midPairing=${midPairing} neverRegistered=${neverRegistered} isGenuineLogout=${isGenuineLogout} shouldReconnect=${shouldReconnect} currentStatus=${waStatuses[schoolId]} currentCode=${waPairingCodes[schoolId]}`);
 
                 // WhatsApp sometimes issues a pairing code successfully, then closes the
                 // connection ~1s later with a 429/"rate-overlimit" error. This wouldn't have
