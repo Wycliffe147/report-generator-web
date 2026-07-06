@@ -1120,7 +1120,9 @@ function setupWhatsAppStatusPolling() {
             statusSpan.className = "statusDisconnected";
             document.getElementById('qr-image').style.display = 'none';
             document.getElementById('qr-placeholder').style.display = 'block';
-            document.getElementById('qr-placeholder').innerText = "Waiting for WhatsApp connection setup...";
+            document.getElementById('qr-placeholder').innerText = data.lastError
+                ? `⚠️ ${data.lastError}`
+                : "Waiting for WhatsApp connection setup...";
             pairingDisplay.style.display = 'none';
             logoutBtn.style.display = 'none';
         }

@@ -1005,6 +1005,7 @@ const waQrImages = {};        // qr data URL per school
 const waStatuses = {};        // connection status per school
 const waPairingCodes = {};    // phone-number pairing code per school
 const waConnecting = {};      // lock: true while a connection attempt is in flight for a school
+const waLastError = {};       // last error message per school, surfaced to the UI for debugging
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -1129,6 +1130,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
         waStatuses[schoolId] = 'Disconnected';
         waQrImages[schoolId] = null;
         waPairingCodes[schoolId] = null;
+        waLastError[schoolId] = null;
 
         // Socket now exists, so the status endpoint's auto-start check will no
         // longer trigger a duplicate session — safe to release the lock here.
@@ -1146,6 +1148,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             } catch (e) {
                 console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
                 waStatuses[schoolId] = 'Disconnected';
+                waLastError[schoolId] = `Pairing code request failed: ${e.message || e}`;
             }
         }
 
@@ -1191,6 +1194,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
         console.error(`[WhatsApp:${schoolId}] Failed to establish connection:`, e);
         waStatuses[schoolId] = 'Disconnected';
         waConnecting[schoolId] = false;
+        waLastError[schoolId] = `Connection setup failed: ${e.message || e}`;
     }
 }
 
@@ -1206,7 +1210,8 @@ app.get('/api/whatsapp/status', (req, res) => {
     res.json({
         status: waStatuses[schoolId] || 'Disconnected',
         qr: waQrImages[schoolId] || null,
-        pairingCode: waPairingCodes[schoolId] || null
+        pairingCode: waPairingCodes[schoolId] || null,
+        lastError: waLastError[schoolId] || null
     });
 });
 
