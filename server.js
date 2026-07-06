@@ -1009,6 +1009,7 @@ const waLastError = {};       // last error message per school, surfaced to the 
 const waLastMethod = {};      // last requested login method ('qr' | 'pairing') per school
 const waLastPhone = {};       // last requested phone number per school (for pairing method)
 const waPairingRequested = {}; // true once a pairing code has been requested for the current session (prevents re-requesting on every internal reconnect)
+const waBadSessionCount = {}; // consecutive badSession/multideviceMismatch failures per school (guards against a wipe-retry-fail loop)
 
 // --- WhatsApp pairing rate-limit ("blocked number") handling ---------------
 // WhatsApp rate-limits pairing-code requests per phone number. This can show up in
@@ -1325,6 +1326,37 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                     return;
                 }
 
+                // Some disconnect reasons mean the *stored credentials themselves* are the
+                // problem — not the network. Reconnecting with the same (corrupted/stale) auth
+                // state just repeats the same failed handshake indefinitely. For these, wipe
+                // the auth state first so the next attempt starts a clean QR/pairing flow.
+                const isCorruptedSession = statusCode === DisconnectReason.badSession
+                    || statusCode === DisconnectReason.multideviceMismatch;
+
+                if (isCorruptedSession) {
+                    waBadSessionCount[schoolId] = (waBadSessionCount[schoolId] || 0) + 1;
+                    if (waBadSessionCount[schoolId] > 3) {
+                        // Wiping and retrying hasn't helped after several attempts — stop looping
+                        // and surface it so a human can look into it, rather than hammering
+                        // WhatsApp's servers (and risking a rate-limit block) indefinitely.
+                        console.error(`[WhatsApp:${schoolId}] Repeated corrupted-session failures (statusCode ${statusCode}) even after clearing credentials. Stopping auto-retry.`);
+                        waPairingRequested[schoolId] = false;
+                        waStatuses[schoolId] = 'Disconnected';
+                        waQrImages[schoolId] = null;
+                        waPairingCodes[schoolId] = null;
+                        waLastError[schoolId] = 'Repeated session errors even after resetting credentials. Please try connecting again manually.';
+                        return;
+                    }
+                    console.log(`[WhatsApp:${schoolId}] Corrupted/stale session detected (statusCode ${statusCode}) — clearing credentials before retrying (attempt ${waBadSessionCount[schoolId]}/3).`);
+                    waPairingRequested[schoolId] = false;
+                    waStatuses[schoolId] = 'Disconnected';
+                    waQrImages[schoolId] = null;
+                    waPairingCodes[schoolId] = null;
+                    await clearWhatsAppAuth(schoolId);
+                    connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
+                    return;
+                }
+
                 if (!midPairing) {
                     waStatuses[schoolId] = 'Disconnected';
                     waQrImages[schoolId] = null;
@@ -1343,6 +1375,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                     await clearWhatsAppAuth(schoolId);
                 }
             } else if (connection === 'open') {
+                waBadSessionCount[schoolId] = 0;
                 waStatuses[schoolId] = 'Connected';
                 waQrImages[schoolId] = null;
                 waPairingCodes[schoolId] = null;
