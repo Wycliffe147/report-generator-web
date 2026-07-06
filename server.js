@@ -1006,6 +1006,8 @@ const waStatuses = {};        // connection status per school
 const waPairingCodes = {};    // phone-number pairing code per school
 const waConnecting = {};      // lock: true while a connection attempt is in flight for a school
 const waLastError = {};       // last error message per school, surfaced to the UI for debugging
+const waLastMethod = {};      // last requested login method ('qr' | 'pairing') per school
+const waLastPhone = {};       // last requested phone number per school (for pairing method)
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -1093,6 +1095,8 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
     waConnecting[schoolId] = true;
 
     const { method = 'qr', phoneNumber = null } = opts;
+    waLastMethod[schoolId] = method;
+    waLastPhone[schoolId] = phoneNumber;
 
     try {
         // Disconnect existing session for this school if any
@@ -1176,7 +1180,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 delete waSocks[schoolId];
                 if (shouldReconnect) {
                     console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
-                    connectToWhatsApp(schoolId);
+                    connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
                 } else {
                     console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
                     await clearWhatsAppAuth(schoolId);
@@ -1202,10 +1206,12 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
 
 app.get('/api/whatsapp/status', (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
-    // Auto-start a session for this school if none exists yet and nothing is already in flight
+    // Auto-start a session for this school if none exists yet and nothing is already in flight.
+    // Reuse whatever method was last requested (qr/pairing) instead of always defaulting to QR,
+    // so an in-progress phone-number pairing attempt doesn't get silently reverted.
     if (!waSocks[schoolId] && !waConnecting[schoolId] && waStatuses[schoolId] !== 'Connecting') {
         waStatuses[schoolId] = 'Connecting';
-        connectToWhatsApp(schoolId, { method: 'qr' });
+        connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
     }
     res.json({
         status: waStatuses[schoolId] || 'Disconnected',
@@ -1238,6 +1244,10 @@ app.post('/api/whatsapp/logout', async (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
     waStatuses[schoolId] = 'Disconnected';
     waQrImages[schoolId] = null;
+    waPairingCodes[schoolId] = null;
+    waLastError[schoolId] = null;
+    waLastMethod[schoolId] = 'qr';
+    waLastPhone[schoolId] = null;
     if (waSocks[schoolId]) {
         try {
             await waSocks[schoolId].logout();
