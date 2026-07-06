@@ -1121,7 +1121,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             printQRInTerminal: false,
             syncFullHistory: false,
             markOnlineOnConnect: false,
-            browser: usePairing ? ['Chrome (Linux)', '', ''] : undefined,
+            ...(usePairing ? { browser: ['Chrome (Linux)', '', ''] } : {}),
             logger: pino({ level: 'silent' })
         });
 
