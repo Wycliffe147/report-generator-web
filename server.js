@@ -1008,6 +1008,7 @@ const waConnecting = {};      // lock: true while a connection attempt is in fli
 const waLastError = {};       // last error message per school, surfaced to the UI for debugging
 const waLastMethod = {};      // last requested login method ('qr' | 'pairing') per school
 const waLastPhone = {};       // last requested phone number per school (for pairing method)
+const waPairingRequested = {}; // true once a pairing code has been requested for the current session (prevents re-requesting on every internal reconnect)
 
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -1117,8 +1118,11 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
 
         const { version } = await fetchLatestBaileysVersion();
 
-        // Pairing-code login only makes sense while this session hasn't been registered yet
-        const usePairing = method === 'pairing' && !!phoneNumber && !state.creds.registered;
+        // Pairing-code login only makes sense while this session hasn't been registered yet,
+        // and only on the FIRST connection attempt for this request — Baileys does a normal
+        // internal restart shortly after issuing a code, and re-requesting on that reconnect
+        // would generate a brand new code and invalidate the one the user is about to enter.
+        const usePairing = method === 'pairing' && !!phoneNumber && !state.creds.registered && !waPairingRequested[schoolId];
 
         const sock = makeWASocket({
             version,
@@ -1131,10 +1135,18 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
         });
 
         waSocks[schoolId] = sock;
-        waStatuses[schoolId] = 'Disconnected';
-        waQrImages[schoolId] = null;
-        waPairingCodes[schoolId] = null;
-        waLastError[schoolId] = null;
+
+        // If we already issued a pairing code and are just resuming after Baileys' normal
+        // internal restart, keep showing that same code/status instead of wiping it — the
+        // code is still valid until the user enters it, a fresh one is explicitly requested,
+        // or the connection genuinely opens/logs out.
+        const resumingPairing = method === 'pairing' && waPairingRequested[schoolId] && !state.creds.registered;
+        if (!resumingPairing) {
+            waStatuses[schoolId] = 'Disconnected';
+            waQrImages[schoolId] = null;
+            waPairingCodes[schoolId] = null;
+            waLastError[schoolId] = null;
+        }
 
         // Socket now exists, so the status endpoint's auto-start check will no
         // longer trigger a duplicate session — safe to release the lock here.
@@ -1148,6 +1160,7 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
                 const code = await sock.requestPairingCode(cleanNumber);
                 waPairingCodes[schoolId] = code;
                 waStatuses[schoolId] = 'Enter Pairing Code';
+                waPairingRequested[schoolId] = true;
                 console.log(`[WhatsApp:${schoolId}] Pairing code requested: ${code}`);
             } catch (e) {
                 console.error(`[WhatsApp:${schoolId}] Failed to request pairing code:`, e);
@@ -1174,21 +1187,34 @@ async function connectToWhatsApp(schoolId = 'default', opts = {}) {
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                waStatuses[schoolId] = 'Disconnected';
-                waQrImages[schoolId] = null;
-                waPairingCodes[schoolId] = null;
                 delete waSocks[schoolId];
+
+                // Don't wipe an in-progress pairing code just because Baileys did its normal
+                // internal restart after issuing it — keep it on screen until it either
+                // succeeds, is replaced by an explicit new request, or the account logs out.
+                const midPairing = usePairing || (method === 'pairing' && waPairingRequested[schoolId] && waPairingCodes[schoolId]);
+                if (!midPairing) {
+                    waStatuses[schoolId] = 'Disconnected';
+                    waQrImages[schoolId] = null;
+                    waPairingCodes[schoolId] = null;
+                }
+
                 if (shouldReconnect) {
                     console.log(`[WhatsApp:${schoolId}] Reconnecting...`);
                     connectToWhatsApp(schoolId, { method: waLastMethod[schoolId] || 'qr', phoneNumber: waLastPhone[schoolId] });
                 } else {
                     console.log(`[WhatsApp:${schoolId}] Logged out — clearing credentials.`);
+                    waPairingRequested[schoolId] = false;
+                    waStatuses[schoolId] = 'Disconnected';
+                    waQrImages[schoolId] = null;
+                    waPairingCodes[schoolId] = null;
                     await clearWhatsAppAuth(schoolId);
                 }
             } else if (connection === 'open') {
                 waStatuses[schoolId] = 'Connected';
                 waQrImages[schoolId] = null;
                 waPairingCodes[schoolId] = null;
+                waPairingRequested[schoolId] = false;
                 console.log(`✅ [WhatsApp:${schoolId}] Connected!`);
             }
         });
@@ -1234,6 +1260,9 @@ app.post('/api/whatsapp/connect', async (req, res) => {
     waStatuses[schoolId] = 'Connecting';
     waQrImages[schoolId] = null;
     waPairingCodes[schoolId] = null;
+    if (method === 'pairing') {
+        waPairingRequested[schoolId] = false; // force a fresh code on explicit request
+    }
 
     connectToWhatsApp(schoolId, { method: method === 'pairing' ? 'pairing' : 'qr', phoneNumber });
 
@@ -1248,6 +1277,7 @@ app.post('/api/whatsapp/logout', async (req, res) => {
     waLastError[schoolId] = null;
     waLastMethod[schoolId] = 'qr';
     waLastPhone[schoolId] = null;
+    waPairingRequested[schoolId] = false;
     if (waSocks[schoolId]) {
         try {
             await waSocks[schoolId].logout();
