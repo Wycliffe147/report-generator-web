@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 const { ZipArchive } = require('archiver');
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 // Prevent Baileys timeouts from crashing the server
 process.on('unhandledRejection', (reason, promise) => {
@@ -1065,6 +1066,57 @@ function clearWaBlock(cleanNumber) {
     }
 }
 
+// --- Phone number validation ------------------------------------------------
+// Previously, phone numbers were only checked with a bare regex (e.g. "is there at
+// least one digit?", or "is it exactly 9 digits, then assume Malawi"). That doesn't
+// catch a user typing a local-format number (e.g. starting with a trunk "0") or a
+// number with the wrong number of digits for its country — both pass the old check
+// and only fail once they reach WhatsApp's servers, with a vague error.
+//
+// libphonenumber-js validates against real per-country numbering rules instead.
+const DEFAULT_PHONE_COUNTRY = 'MW'; // Malawi — change if deploying for a different country's schools.
+
+/**
+ * Normalize a user-entered phone number into the digits-only, country-code-prefixed
+ * format WhatsApp/Baileys expects (e.g. "265991234567").
+ *
+ * Tries two readings and accepts whichever is valid:
+ *   1) The number already includes a country code (with or without a leading '+').
+ *   2) The number is a local/national-format number for `defaultCountry`, including
+ *      the common case of a leading trunk prefix (e.g. Malawi's "0991234567").
+ *
+ * Returns { ok: true, number, country } on success, or { ok: false, reason } with a
+ * human-readable message safe to show directly to the user.
+ */
+function normalizeWhatsAppNumber(raw, defaultCountry = DEFAULT_PHONE_COUNTRY) {
+    const digitsOnly = String(raw || '').replace(/\D/g, '');
+    if (!digitsOnly) {
+        return { ok: false, reason: 'Please enter a phone number.' };
+    }
+
+    let asInternational = null;
+    let asLocal = null;
+    try { asInternational = parsePhoneNumberFromString('+' + digitsOnly); } catch (_) {}
+    try { asLocal = parsePhoneNumberFromString(digitsOnly, defaultCountry); } catch (_) {}
+
+    // Prefer the "already has a country code" reading when it's valid — a user who
+    // typed extra leading digits meant them as a country code, not part of a longer
+    // local number. Fall back to the local-number reading (e.g. handles a leading
+    // trunk "0") only if the international reading didn't check out.
+    const parsed = (asInternational && asInternational.isValid()) ? asInternational
+        : (asLocal && asLocal.isValid()) ? asLocal
+        : null;
+
+    if (!parsed) {
+        return {
+            ok: false,
+            reason: `That doesn't look like a valid phone number. Include the country code, e.g. 265991234567 for Malawi.`
+        };
+    }
+
+    return { ok: true, number: parsed.number.replace('+', ''), country: parsed.country || null };
+}
+
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
         await collection.replaceOne(
@@ -1425,14 +1477,17 @@ app.get('/api/whatsapp/status', (req, res) => {
 // method: 'qr' (default) or 'pairing' (requires phoneNumber, e.g. "265991234567")
 app.post('/api/whatsapp/connect', async (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
-    const { method, phoneNumber } = req.body || {};
-
-    if (method === 'pairing' && (!phoneNumber || !phoneNumber.replace(/\D/g, ''))) {
-        return res.status(400).json({ error: 'Please provide a valid phone number with country code.' });
-    }
+    const { method } = req.body || {};
+    let phoneNumber = req.body ? req.body.phoneNumber : null;
 
     if (method === 'pairing') {
-        const block = getWaBlock(phoneNumber.replace(/\D/g, ''));
+        const normalized = normalizeWhatsAppNumber(phoneNumber);
+        if (!normalized.ok) {
+            return res.status(400).json({ error: normalized.reason });
+        }
+        phoneNumber = normalized.number;
+
+        const block = getWaBlock(phoneNumber);
         if (block) {
             const minsLeft = Math.ceil((block.blockedUntil - Date.now()) / 60000);
             return res.status(429).json({
@@ -1496,6 +1551,11 @@ app.post('/api/whatsapp/send', async (req, res) => {
         return res.status(400).json({ error: "No phone number saved for this student." });
     }
 
+    const normalizedPhone = normalizeWhatsAppNumber(student.phone);
+    if (!normalizedPhone.ok) {
+        return res.status(400).json({ error: `Invalid phone number for ${student.name}: ${normalizedPhone.reason}` });
+    }
+
     try {
         // Ensure PDF is generated
         const pdfBytes = await generatePDF(student, db);
@@ -1503,13 +1563,7 @@ app.post('/api/whatsapp/send', async (req, res) => {
         const pdfPath = path.join(REPORTS_DIR, fileName);
         fs.writeFileSync(pdfPath, pdfBytes);
 
-        // Format JID: clean phone number and append @c.us
-        let cleanNumber = student.phone.replace(/\D/g, '');
-        // If no country code, default to Malawi (+265) or let user supply it
-        if (cleanNumber.length === 9) {
-            cleanNumber = "265" + cleanNumber; // Malawi standard format
-        }
-        const jid = `${cleanNumber}@c.us`;
+        const jid = `${normalizedPhone.number}@c.us`;
 
         await sock.sendMessage(jid, {
             document: fs.readFileSync(pdfPath),
