@@ -311,6 +311,21 @@ app.post('/api/login', (req, res) => {
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
 });
 
+// TEMPORARY DIAGNOSTIC — remove after fixing login issues
+app.get('/api/debug/users', (req, res) => {
+    readDb('default');
+    const info = (dbCache.users || []).map(u => ({
+        id: u.id,
+        username: u.username,
+        role: u.role,
+        schoolId: u.schoolId,
+        hasPasswordHash: !!u.passwordHash,
+        hasPlaintextPassword: !!u.password,
+        passwordHashPrefix: u.passwordHash ? u.passwordHash.substring(0, 10) + '...' : null
+    }));
+    res.json(info);
+});
+
 // Public endpoint to list available schools (no auth required)
 // Excludes the internal 'default' placeholder school
 app.get('/api/public/schools', (req, res) => {
