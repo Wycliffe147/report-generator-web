@@ -32,6 +32,15 @@ function getAbbreviation(sub) {
     return subjectsMap[sub] || sub.substring(0,3).toUpperCase();
 }
 
+function formatRole(role) {
+    if (role === 'class_teacher') return 'Class Teacher';
+    if (role === 'superadmin') return 'Super Admin';
+    if (!role) return '';
+    return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+const CLASS_LEVELS = ['Form 1', 'Form 2', 'Form 3', 'Form 4'];
+
 let authToken = localStorage.getItem('token');
 let currentUser = JSON.parse(localStorage.getItem('user') || 'null');
 
@@ -83,8 +92,34 @@ async function checkLogin() {
         document.getElementById('class-selector-container').style.display = 'flex';
         
         await loadGlobals();
-        
-        if (currentUser.role === 'teacher') {
+
+        // Restrict the global class picker to a class teacher's own assigned class(es)
+        const classSelect = document.getElementById('global-class-select');
+        if (currentUser.role === 'class_teacher') {
+            const myClasses = (currentUser.classes && currentUser.classes.length) ? currentUser.classes : CLASS_LEVELS;
+            Array.from(classSelect.options).forEach(opt => {
+                opt.style.display = myClasses.includes(opt.value) ? '' : 'none';
+            });
+            if (!myClasses.includes(currentClass)) {
+                currentClass = myClasses[0];
+                classSelect.value = currentClass;
+            }
+        } else {
+            Array.from(classSelect.options).forEach(opt => opt.style.display = '');
+        }
+
+        if (currentUser.role === 'class_teacher') {
+            document.querySelectorAll('.nav-links li').forEach(li => li.style.display = 'block');
+            document.getElementById('nav-superadmin').style.display = 'none';
+            document.querySelector('[data-tab="whatsapp-tab"]').style.display = 'none';
+            document.querySelector('[data-tab="settings-tab"]').style.display = 'none';
+
+            document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
+            document.querySelector('[data-tab="students-tab"]').classList.add('active');
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('students-tab').classList.add('active');
+            renderStudentsTab();
+        } else if (currentUser.role === 'teacher') {
             document.querySelector('[data-tab="students-tab"]').style.display = 'none';
             document.querySelector('[data-tab="staff-tab"]').style.display = 'none';
             document.querySelector('[data-tab="rankings-tab"]').style.display = 'none';
@@ -651,7 +686,15 @@ async function fetchStudents() {
 // 1. Render Students Tab
 async function renderStudentsTab() {
     await fetchStudents();
-    
+
+    const readOnly = currentUser.role === 'class_teacher';
+
+    // Registration form and subject-config save are for admins only
+    const addStudentCard = document.getElementById('add-student-form')?.closest('.card');
+    if (addStudentCard) addStudentCard.style.display = readOnly ? 'none' : '';
+    const saveSubjectsBtn = document.getElementById('save-subjects-btn');
+    if (saveSubjectsBtn) saveSubjectsBtn.style.display = readOnly ? 'none' : '';
+
     // Render dynamic table headers
     const thead = document.getElementById('subjects-table-header');
     if (thead) {
@@ -666,16 +709,27 @@ async function renderStudentsTab() {
     
     classStudents.forEach(student => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><input type="text" data-student-id="${student.id}" data-field="name" value="${student.name}" style="width: 120px;"></td>
-            <td><input type="text" data-student-id="${student.id}" data-field="phone" value="${student.phone || ''}" style="width: 100px;"></td>
-            <td><input type="text" data-student-id="${student.id}" data-field="bursaryName" value="${student.bursaryName || ''}" placeholder="None" style="width: 100px;"></td>
-        ` + 
-            subjectsList.map(sub => `
-                <td>
-                    <input type="checkbox" data-student-id="${student.id}" data-subject="${sub}" ${student.subjects[sub] ? 'checked' : ''}>
-                </td>
-            `).join('');
+        if (readOnly) {
+            tr.innerHTML = `
+                <td>${student.name}</td>
+                <td>${student.phone || ''}</td>
+                <td>${student.bursaryName || ''}</td>
+            ` +
+                subjectsList.map(sub => `
+                    <td style="text-align:center;">${student.subjects[sub] ? '✔' : ''}</td>
+                `).join('');
+        } else {
+            tr.innerHTML = `
+                <td><input type="text" data-student-id="${student.id}" data-field="name" value="${student.name}" style="width: 120px;"></td>
+                <td><input type="text" data-student-id="${student.id}" data-field="phone" value="${student.phone || ''}" style="width: 100px;"></td>
+                <td><input type="text" data-student-id="${student.id}" data-field="bursaryName" value="${student.bursaryName || ''}" placeholder="None" style="width: 100px;"></td>
+            ` + 
+                subjectsList.map(sub => `
+                    <td>
+                        <input type="checkbox" data-student-id="${student.id}" data-subject="${sub}" ${student.subjects[sub] ? 'checked' : ''}>
+                    </td>
+                `).join('');
+        }
         tbody.appendChild(tr);
     });
 }
@@ -762,8 +816,14 @@ let users = [];
 async function renderStaffTab() {
     const res = await apiFetch('/api/users');
     users = await res.json();
-    
-    // Populate checkboxes
+
+    const readOnly = currentUser.role === 'class_teacher';
+
+    // Hide the create/edit form entirely for class teachers — view only
+    const addStaffCard = document.getElementById('add-staff-form')?.closest('.card');
+    if (addStaffCard) addStaffCard.style.display = readOnly ? 'none' : '';
+
+    // Populate subject checkboxes
     const cbContainer = document.getElementById('staff-subjects-checkboxes');
     cbContainer.innerHTML = '';
     subjectsList.forEach(sub => {
@@ -771,6 +831,17 @@ async function renderStaffTab() {
             <label><input type="checkbox" value="${sub}" class="staff-sub-cb"> ${sub}</label>
         `;
     });
+
+    // Populate class checkboxes (for Class Teacher role)
+    const classCbContainer = document.getElementById('staff-classes-checkboxes');
+    if (classCbContainer) {
+        classCbContainer.innerHTML = '';
+        CLASS_LEVELS.forEach(cls => {
+            classCbContainer.innerHTML += `
+                <label style="margin-right: 15px;"><input type="checkbox" value="${cls}" class="staff-class-cb"> ${cls}</label>
+            `;
+        });
+    }
     
     const tbody = document.querySelector('#staff-table tbody');
     tbody.innerHTML = '';
@@ -794,42 +865,56 @@ async function renderStaffTab() {
         tr.innerHTML = `
             <td>${u.name}</td>
             <td>${u.username}</td>
-            <td>${u.password || '******'}</td>
+            <td>${readOnly ? '******' : (u.password || '******')}</td>
             <td>${subsDisplay}</td>
-            <td><span style="text-transform:capitalize;">${u.role}</span></td>
+            <td><span>${formatRole(u.role)}</span></td>
             <td>
+                ${readOnly ? '' : `
                 <button class="btn outline-btn edit-staff-btn" data-id="${u.id}" style="padding: 5px;">Edit</button>
                 <button class="btn danger-btn del-staff-btn" data-id="${u.id}" style="padding: 5px;">Delete</button>
+                `}
             </td>
         `;
-        
-        tr.querySelector('.edit-staff-btn').addEventListener('click', () => {
-            document.getElementById('staff-id').value = u.id;
-            document.getElementById('staff-name').value = u.name;
-            document.getElementById('staff-username').value = u.username;
-            document.getElementById('staff-password').placeholder = "(Leave blank to keep current)";
-            document.getElementById('staff-role').value = u.role || 'teacher';
-            
-            document.querySelectorAll('.staff-sub-cb').forEach(cb => {
-                cb.checked = classSubs.includes(cb.value);
+
+        if (!readOnly) {
+            tr.querySelector('.edit-staff-btn').addEventListener('click', () => {
+                document.getElementById('staff-id').value = u.id;
+                document.getElementById('staff-name').value = u.name;
+                document.getElementById('staff-username').value = u.username;
+                document.getElementById('staff-password').placeholder = "(Leave blank to keep current)";
+                document.getElementById('staff-role').value = u.role || 'teacher';
+
+                document.querySelectorAll('.staff-sub-cb').forEach(cb => {
+                    cb.checked = classSubs.includes(cb.value);
+                });
+                document.querySelectorAll('.staff-class-cb').forEach(cb => {
+                    cb.checked = (u.classes || []).includes(cb.value);
+                });
+                document.getElementById('staff-role').dispatchEvent(new Event('change'));
+                document.getElementById('cancel-staff-btn').style.display = 'inline-block';
             });
-            document.getElementById('cancel-staff-btn').style.display = 'inline-block';
-        });
-        
-        tr.querySelector('.del-staff-btn').addEventListener('click', async () => {
-            if(confirm('Delete this user?')) {
-                try {
-                    await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
-                    renderStaffTab();
-                } catch(e) {
-                    alert('Error deleting user or unauthorized.');
+
+            tr.querySelector('.del-staff-btn').addEventListener('click', async () => {
+                if(confirm('Delete this user?')) {
+                    try {
+                        await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
+                        renderStaffTab();
+                    } catch(e) {
+                        alert('Error deleting user or unauthorized.');
+                    }
                 }
-            }
-        });
+            });
+        }
         
         tbody.appendChild(tr);
     });
 }
+
+// Show the "Assigned Class(es)" checkboxes only when creating/editing a Class Teacher
+document.getElementById('staff-role').addEventListener('change', (e) => {
+    const classesGroup = document.getElementById('staff-classes-group');
+    if (classesGroup) classesGroup.style.display = e.target.value === 'class_teacher' ? 'block' : 'none';
+});
 
 document.getElementById('add-staff-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -847,6 +932,9 @@ document.getElementById('add-staff-form').addEventListener('submit', async (e) =
     document.querySelectorAll('.staff-sub-cb:checked').forEach(cb => currentClassSubjects.push(`${currentClass}:${cb.value}`));
     
     const subjects = [...otherClassSubjects, ...currentClassSubjects];
+
+    const classes = [];
+    document.querySelectorAll('.staff-class-cb:checked').forEach(cb => classes.push(cb.value));
     
     if (!id && !password) {
         alert("Password is required for new accounts.");
@@ -857,7 +945,7 @@ document.getElementById('add-staff-form').addEventListener('submit', async (e) =
         const res = await apiFetch('/api/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, name, username, password, role, subjects })
+            body: JSON.stringify({ id, name, username, password, role, subjects, classes })
         });
         
         if (res.ok) {
@@ -883,10 +971,14 @@ document.getElementById('cancel-staff-btn').addEventListener('click', () => {
 // 2. Marks Grid Tab
 async function renderMarksTab() {
     await fetchStudents();
-    
-    const allowedSubjects = currentUser.role === 'teacher' ? 
-        (currentUser.subjects || []).filter(s => s.startsWith(currentClass + ':')).map(s => s.split(':')[1]) : 
+
+    // Subjects a plain "teacher" (or the editable subset for a "class_teacher") may enter marks for
+    const editableSubjects = (currentUser.role === 'teacher' || currentUser.role === 'class_teacher') ?
+        (currentUser.subjects || []).filter(s => s.startsWith(currentClass + ':')).map(s => s.split(':')[1]) :
         subjectsList;
+
+    // Columns shown: a plain teacher only sees their own subjects; class teachers and admins see all subjects
+    const allowedSubjects = currentUser.role === 'teacher' ? editableSubjects : subjectsList;
     
     // Generate Headers
     const theadTr = document.getElementById('marks-table-header');
@@ -909,6 +1001,7 @@ async function renderMarksTab() {
         
         allowedSubjects.forEach(sub => {
             const isTaking = student.subjects[sub];
+            const canEdit = currentUser.role === 'class_teacher' ? editableSubjects.includes(sub) : true;
             const mark = isTaking && student.marks[sub] !== undefined && student.marks[sub] !== null ? student.marks[sub] : '';
             cols += `
                 <td>
@@ -916,15 +1009,16 @@ async function renderMarksTab() {
                            data-student-id="${student.id}" 
                            data-subject="${sub}" 
                            value="${mark}" 
-                           ${isTaking ? '' : 'disabled'}
+                           ${(isTaking && canEdit) ? '' : 'disabled'}
                            style="width: 60px;">
                 </td>
             `;
         });
-        
+
+        const canEditRow = currentUser.role !== 'class_teacher' || editableSubjects.length > 0;
         cols += `
             <td>
-                <button class="btn success-btn save-marks-row-btn" data-student-id="${student.id}">Save</button>
+                <button class="btn success-btn save-marks-row-btn" data-student-id="${student.id}" ${canEditRow ? '' : 'style="display:none;"'}>Save</button>
             </td>
         `;
         
@@ -979,6 +1073,10 @@ async function renderRankingsTab() {
     const tbody = document.querySelector('#rankings-table tbody');
     tbody.innerHTML = '';
 
+    const canSend = currentUser.role !== 'class_teacher';
+    const sendSelectedBtn = document.getElementById('btn-send-selected');
+    if (sendSelectedBtn) sendSelectedBtn.style.display = canSend ? '' : 'none';
+
     const classStudents = students.filter(s => (s.classLevel || 'Form 1') === currentClass);
 
     classStudents.forEach(student => {
@@ -992,7 +1090,7 @@ async function renderRankingsTab() {
             <td>
                 <button class="btn primary-btn download-pdf-btn" data-student-id="${student.id}">Save PDF</button>
                 <button class="btn outline-btn preview-pdf-btn" data-student-id="${student.id}" style="border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;">Preview</button>
-                <button class="btn success-btn send-wa-btn" data-student-id="${student.id}">WhatsApp Report</button>
+                ${canSend ? `<button class="btn success-btn send-wa-btn" data-student-id="${student.id}">WhatsApp Report</button>` : ''}
             </td>
         `;
         tbody.appendChild(tr);

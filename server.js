@@ -297,8 +297,8 @@ app.post('/api/login', (req, res) => {
         const user = dbCache.users.find(u => u.username === username && u.role === 'superadmin');
         if (!user) return res.status(401).json({ error: "User not found (superadmin)" });
         if (!bcrypt.compareSync(password, user.passwordHash)) return res.status(401).json({ error: "Wrong password (superadmin)" });
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
-        return res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], classes: user.classes || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
+        return res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], classes: user.classes || [], name: user.name } });
     }
 
     // Regular school login: match by username + schoolId, fallback schoolId to 'default' for legacy users
@@ -308,8 +308,8 @@ app.post('/api/login', (req, res) => {
     );
     if (!user) return res.status(401).json({ error: `User not found in school: ${schoolId}` });
     if (!bcrypt.compareSync(password, user.passwordHash)) return res.status(401).json({ error: "Wrong password" });
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], classes: user.classes || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], classes: user.classes || [], name: user.name } });
 });
 
 // TEMPORARY DIAGNOSTIC — remove after fixing login issues
@@ -377,6 +377,21 @@ function authenticateToken(req, res, next) {
 
 function requireAdmin(req, res, next) {
     if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: "Admin access required" });
+    next();
+}
+
+// Admins, superadmins, and class teachers can all view staff/students, but only
+// admins/superadmins can create, edit, or delete anything (enforced by requireAdmin).
+function requireStaffViewer(req, res, next) {
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin' && req.user.role !== 'class_teacher') {
+        return res.status(403).json({ error: "Access required" });
+    }
+    next();
+}
+
+// Class teachers can view report cards/rankings, but must not be able to send them out.
+function blockClassTeacher(req, res, next) {
+    if (req.user.role === 'class_teacher') return res.status(403).json({ error: "Class teachers cannot send report cards." });
     next();
 }
 
@@ -563,18 +578,39 @@ app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
     res.json({ success: true, settings: db.settings });
 });
 
-app.get('/api/users', requireAdmin, (req, res) => {
+app.get('/api/users', requireStaffViewer, (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
     // Exclude superadmin accounts from school staff lists
-    const safeUsers = db.users
-        .filter(u => u.role !== 'superadmin')
-        .map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, subjects: u.subjects, password: u.password }));
+    let visibleUsers = db.users.filter(u => u.role !== 'superadmin');
+
+    if (req.user.role === 'class_teacher') {
+        // Class teachers only see staff connected to their own class(es):
+        // admins, other class teachers assigned to the same class, and any
+        // teacher who teaches a subject in that class.
+        const myClasses = req.user.classes || [];
+        visibleUsers = visibleUsers.filter(u => {
+            if (u.role === 'admin') return true;
+            if (u.role === 'class_teacher') return (u.classes || []).some(c => myClasses.includes(c));
+            return (u.subjects || []).some(s => myClasses.some(c => s.startsWith(c + ':')));
+        });
+    }
+
+    const safeUsers = visibleUsers.map(u => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        role: u.role,
+        subjects: u.subjects,
+        classes: u.classes,
+        // Class teachers get a read-only view — don't expose other staff's plaintext passwords.
+        password: req.user.role === 'class_teacher' ? undefined : u.password
+    }));
     res.json(safeUsers);
 });
 
 app.post('/api/users', requireAdmin, (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
-    const { id, username, name, password, role, subjects } = req.body;
+    const { id, username, name, password, role, subjects, classes } = req.body;
     
     if (id) {
         // Must update dbCache.users directly — db.users is a filtered copy and mutations won't persist
@@ -583,6 +619,7 @@ app.post('/api/users', requireAdmin, (req, res) => {
             dbCache.users[idx].username = username;
             dbCache.users[idx].name = name;
             dbCache.users[idx].subjects = subjects || [];
+            dbCache.users[idx].classes = classes || [];
             if (role) dbCache.users[idx].role = role;
             if (password) {
                 dbCache.users[idx].passwordHash = bcrypt.hashSync(password, 8);
@@ -600,7 +637,8 @@ app.post('/api/users', requireAdmin, (req, res) => {
             passwordHash: bcrypt.hashSync(password, 8),
             password: password, // Storing plaintext for admin reference
             role: role || 'teacher',
-            subjects: subjects || []
+            subjects: subjects || [],
+            classes: classes || []
         });
     }
     writeDb();
@@ -621,7 +659,12 @@ app.get('/api/students', (req, res) => {
     const db = readDb(req.user ? req.user.schoolId : 'default');
     rankStudents(db);
     let ranked = db.students;
-    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+    if (req.user.role === 'class_teacher') {
+        // Class teachers see every student and every subject, but only for the
+        // class(es) they're assigned to.
+        const myClasses = req.user.classes || [];
+        ranked = ranked.filter(s => myClasses.includes(s.classLevel || 'Form 1'));
+    } else if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
         const teacherSubjects = req.user.subjects || [];
         // Show students who are ENROLLED in at least one of the teacher's subjects
         ranked = ranked.filter(s =>
@@ -1243,7 +1286,7 @@ app.post('/api/whatsapp/logout', async (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/whatsapp/send', async (req, res) => {
+app.post('/api/whatsapp/send', blockClassTeacher, async (req, res) => {
     const schoolId = req.user ? req.user.schoolId : 'default';
     const sock = waSocks[schoolId];
     const { studentId } = req.body;

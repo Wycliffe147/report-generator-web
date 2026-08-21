@@ -176,11 +176,18 @@
                             <label>Role</label>
                             <select id="staff-role" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 1rem;">
                                 <option value="teacher">Teacher</option>
+                                <option value="class_teacher">Class Teacher</option>
                                 <option value="admin">Admin</option>
                             </select>
                         </div>
+                        <div class="input-group" id="staff-classes-group" style="width: 100%; margin-top: 10px; display: none;">
+                            <label>Assigned Class(es) (Class Teacher of)</label>
+                            <div id="staff-classes-checkboxes" style="display: block; margin-top: 10px; background: var(--bg-primary); padding: 15px; border-radius: 5px; border: 1px solid var(--border-color);">
+                                <!-- Checkboxes populated dynamically in JS -->
+                            </div>
+                        </div>
                         <div class="input-group" style="width: 100%; margin-top: 10px;">
-                            <label>Assigned Subjects (For currently selected Class)</label>
+                            <label>Assigned Subjects (For currently selected Class) — controls which subjects they can enter marks for</label>
                             <div id="staff-subjects-checkboxes" style="display: block; margin-top: 10px; background: var(--bg-primary); padding: 15px; border-radius: 5px; border: 1px solid var(--border-color); max-height: 250px; overflow-y: auto;">
                                 <!-- Checkboxes populated dynamically in JS -->
                             </div>
