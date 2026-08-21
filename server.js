@@ -514,15 +514,16 @@ app.post('/api/users', requireAdmin, (req, res) => {
     const { id, username, name, password, role, subjects } = req.body;
     
     if (id) {
-        const idx = db.users.findIndex(u => u.id === id);
+        // Must update dbCache.users directly — db.users is a filtered copy and mutations won't persist
+        const idx = dbCache.users.findIndex(u => u.id === id);
         if (idx !== -1) {
-            db.users[idx].username = username;
-            db.users[idx].name = name;
-            db.users[idx].subjects = subjects || [];
-            if (role) db.users[idx].role = role;
+            dbCache.users[idx].username = username;
+            dbCache.users[idx].name = name;
+            dbCache.users[idx].subjects = subjects || [];
+            if (role) dbCache.users[idx].role = role;
             if (password) {
-                db.users[idx].passwordHash = bcrypt.hashSync(password, 8);
-                db.users[idx].password = password; // Storing plaintext for admin reference
+                dbCache.users[idx].passwordHash = bcrypt.hashSync(password, 8);
+                dbCache.users[idx].password = password; // Storing plaintext for admin reference
             }
         }
     } else {
