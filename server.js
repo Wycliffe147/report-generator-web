@@ -287,26 +287,27 @@ function rankStudents(db) {
 app.post('/api/login', (req, res) => {
     // Force readDb to initialize structure
     readDb('default');
-    const { username, password, schoolId } = req.body;
+    // Trim to catch accidental whitespace from autofill/copy-paste
+    const username = (req.body.username || '').trim();
+    const password = (req.body.password || '');
+    const schoolId = (req.body.schoolId || '').trim();
 
     // Superadmin login: schoolId will be 'superadmin' (special value from the dropdown)
     if (schoolId === 'superadmin') {
         const user = dbCache.users.find(u => u.username === username && u.role === 'superadmin');
-        if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
+        if (!user) return res.status(401).json({ error: "User not found (superadmin)" });
+        if (!bcrypt.compareSync(password, user.passwordHash)) return res.status(401).json({ error: "Wrong password (superadmin)" });
         const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
         return res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
     }
 
     // Regular school login: match by username + schoolId, fallback schoolId to 'default' for legacy users
     const user = dbCache.users.find(u =>
-        u.username === username &&
+        u.username.trim() === username &&
         (u.schoolId === schoolId || (!u.schoolId && schoolId === 'default'))
     );
-    if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
-        return res.status(401).json({ error: "Invalid credentials" });
-    }
+    if (!user) return res.status(401).json({ error: `User not found in school: ${schoolId}` });
+    if (!bcrypt.compareSync(password, user.passwordHash)) return res.status(401).json({ error: "Wrong password" });
     const token = jwt.sign({ id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name, schoolId: user.schoolId || 'default' }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, subjects: user.subjects || [], name: user.name } });
 });
@@ -324,6 +325,23 @@ app.get('/api/debug/users', (req, res) => {
         passwordHashPrefix: u.passwordHash ? u.passwordHash.substring(0, 10) + '...' : null
     }));
     res.json(info);
+});
+
+// TEMPORARY RECOVERY — force-reset any user's password by username
+// Usage: POST /api/debug/reset-password?secret=CHANGE_ME_NOW
+// Body: { "username": "admin", "newPassword": "mynewpass" }
+const RESET_SECRET = process.env.RESET_SECRET || 'CHANGE_ME_NOW';
+app.post('/api/debug/reset-password', (req, res) => {
+    if (req.query.secret !== RESET_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    readDb('default');
+    const { username, newPassword } = req.body;
+    if (!username || !newPassword) return res.status(400).json({ error: 'username and newPassword required' });
+    const user = (dbCache.users || []).find(u => u.username.trim() === username.trim());
+    if (!user) return res.status(404).json({ error: `No user found with username: ${username}` });
+    user.passwordHash = bcrypt.hashSync(newPassword, 8);
+    user.password = newPassword;
+    writeDb();
+    res.json({ success: true, message: `Password reset for user: ${user.username} (${user.role})` });
 });
 
 // Public endpoint to list available schools (no auth required)
