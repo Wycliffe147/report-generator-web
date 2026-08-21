@@ -142,7 +142,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         document.getElementById('login-error').style.display = 'none';
         checkLogin();
     } else {
-        document.getElementById('login-error').innerText = 'Invalid credentials. Please try again.';
+        let msg = 'Invalid credentials. Please try again.';
+        try { const d = await res.json(); if (d.error) msg = d.error + ' (HTTP ' + res.status + ')'; } catch(e) {}
+        document.getElementById('login-error').innerText = msg;
         document.getElementById('login-error').style.display = 'block';
     }
 });
