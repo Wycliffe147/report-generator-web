@@ -450,7 +450,7 @@ app.get('/api/me', (req, res) => {
 });
 
 app.get('/api/settings', (req, res) => {
-    res.json(readDb().settings);
+    res.json(readDb(req.user ? req.user.schoolId : 'default').settings);
 });
 
 app.post('/api/settings', requireAdmin, upload.single('logo'), (req, res) => {
