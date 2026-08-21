@@ -39,6 +39,7 @@ async function initDB() {
         } else {
             dbCache = { students: [], users: [], subjects: [], settings: {} };
         }
+        fixUsers();
         return;
     }
     
@@ -62,6 +63,7 @@ async function initDB() {
             }
             await stateCollection.insertOne({ _id: 'main', data: dbCache });
         }
+        fixUsers();
     } catch (err) {
         console.error("❌ Failed to connect to MongoDB, falling back to local file:", err);
         if (fs.existsSync(DB_FILE)) {
@@ -69,6 +71,24 @@ async function initDB() {
         } else {
             dbCache = { students: [], users: [], subjects: [], settings: {} };
         }
+        fixUsers();
+    }
+}
+
+// Ensure every user has a valid passwordHash. Runs on every startup so it
+// covers accounts created before bcrypt was introduced (e.g. the superadmin).
+function fixUsers() {
+    // dbCache.users is a flat array in both old and new schema
+    const allUsers = dbCache.users || [];
+    allUsers.forEach(u => {
+        if (!u.passwordHash && u.password) {
+            console.log(`[fixUsers] Backfilling passwordHash for user: ${u.username}`);
+            u.passwordHash = bcrypt.hashSync(u.password, 8);
+        }
+    });
+    const broken = allUsers.filter(u => !u.passwordHash);
+    if (broken.length) {
+        console.warn(`[fixUsers] ${broken.length} user(s) have no passwordHash and no plaintext password — they cannot log in:`, broken.map(u => u.username));
     }
 }
 
