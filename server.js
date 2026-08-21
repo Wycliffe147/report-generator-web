@@ -345,11 +345,17 @@ app.post('/api/debug/reset-password', (req, res) => {
 });
 
 // Public endpoint to list available schools (no auth required)
-// Excludes the internal 'default' placeholder school
+// Includes 'default' (superadmin's school) only if it has staff users
 app.get('/api/public/schools', (req, res) => {
     readDb('default');
     const list = Object.keys(dbCache.schools)
-        .filter(id => id !== 'default')
+        .filter(id => {
+            if (id === 'default') {
+                // Only show 'default' school if it has teachers/admins (i.e. it's actively used)
+                return (dbCache.users || []).some(u => u.schoolId === 'default' && u.role !== 'superadmin');
+            }
+            return true;
+        })
         .map(id => ({
             schoolId: id,
             schoolName: dbCache.schools[id].settings.schoolName || 'Unnamed School'
