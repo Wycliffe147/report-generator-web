@@ -21,6 +21,10 @@ async function loadGlobals() {
         subjectsList = masterSubjects.filter(s => s.active).map(s => s.name).sort();
         subjectsMap = {};
         masterSubjects.forEach(s => subjectsMap[s.name] = s.abbr);
+        const sidebarSchoolName = document.getElementById('sidebar-school-name');
+        if (sidebarSchoolName && settings.schoolName) {
+            sidebarSchoolName.innerText = settings.schoolName;
+        }
     } catch(e) {}
 }
 
