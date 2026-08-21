@@ -115,6 +115,10 @@ function readDb(schoolId = 'default') {
         dbCache.users.forEach(u => { 
             if(!u.schoolId) u.schoolId = 'default'; 
             if(u.id === 'admin_1') u.role = 'superadmin';
+            // Backfill passwordHash for legacy accounts that only have plaintext password
+            if (!u.passwordHash && u.password) {
+                u.passwordHash = bcrypt.hashSync(u.password, 8);
+            }
         });
         delete dbCache.students;
         delete dbCache.settings;
